@@ -1,0 +1,29 @@
+[project]
+name = "mushi"
+version = "0.1.0"
+description = "Persistent task and session manager for coding agents"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12,<3",
+    "typer>=0.20,<0.21",
+]
+
+[project.scripts]
+mushi = "mushi.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0,<10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
