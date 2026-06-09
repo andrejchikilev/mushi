@@ -11,8 +11,13 @@ SENSITIVE_KEY_PARTS = ("api_key", "authorization", "credential", "password", "se
 Identifier = Annotated[str, Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")]
 
 
-def _utc_now() -> datetime:
+def utc_now() -> datetime:
+    """Return the current UTC datetime."""
     return datetime.now(UTC)
+
+
+
+_utc_now = utc_now
 
 
 class TaskStatus(StrEnum):
