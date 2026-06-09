@@ -32,6 +32,12 @@ def test_task_record_rejects_empty_title() -> None:
         TaskRecord(id="task-1", title="")
 
 
+@pytest.mark.parametrize("bad_id", ["../outside", "task/child", ".hidden", ""])
+def test_task_record_rejects_path_unsafe_ids(bad_id: str) -> None:
+    with pytest.raises(ValidationError):
+        TaskRecord(id=bad_id, title="Design storage")
+
+
 def test_session_record_rejects_ended_before_started() -> None:
     started_at = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -74,6 +80,11 @@ def test_phase_one_records_accept_minimal_valid_data() -> None:
     assert event.kind == EventKind.CREATED
     assert handoff.source_session_ids == []
     assert search.record_type == "task"
+
+
+def test_profile_rejects_path_unsafe_names() -> None:
+    with pytest.raises(ValidationError):
+        ProfileDefinition(name="../default", backend="opencode")
 
 
 def test_redact_metadata_recursively_redacts_sensitive_keys() -> None:

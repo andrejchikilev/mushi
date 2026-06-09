@@ -2,12 +2,13 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SCHEMA_VERSION: Literal[1] = 1
 SENSITIVE_KEY_PARTS = ("api_key", "authorization", "credential", "password", "secret", "token")
+Identifier = Annotated[str, Field(min_length=1, pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$")]
 
 
 def _utc_now() -> datetime:
@@ -46,14 +47,14 @@ class BaseRecord(BaseModel):
 
 
 class TaskRecord(BaseRecord):
-    id: str = Field(min_length=1)
+    id: Identifier
     title: str = Field(min_length=1)
     status: TaskStatus = TaskStatus.OPEN
     created_at: datetime = Field(default_factory=_utc_now)
     updated_at: datetime = Field(default_factory=_utc_now)
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
-    session_ids: list[str] = Field(default_factory=list)
+    session_ids: list[Identifier] = Field(default_factory=list)
 
     @field_validator("updated_at")
     @classmethod
@@ -65,10 +66,10 @@ class TaskRecord(BaseRecord):
 
 
 class SessionRecord(BaseRecord):
-    id: str = Field(min_length=1)
-    task_id: str = Field(min_length=1)
+    id: Identifier
+    task_id: Identifier
     backend: str = Field(min_length=1)
-    profile: str = Field(min_length=1)
+    profile: Identifier
     workspace_path: str = Field(min_length=1)
     goal: str = Field(min_length=1)
     status: SessionStatus = SessionStatus.PLANNED
@@ -79,7 +80,7 @@ class SessionRecord(BaseRecord):
     invocation: dict[str, Any] = Field(default_factory=dict)
     result_summary: str | None = None
     transcript_refs: list[str] = Field(default_factory=list)
-    handoff_ids: list[str] = Field(default_factory=list)
+    handoff_ids: list[Identifier] = Field(default_factory=list)
 
     @field_validator("ended_at")
     @classmethod
@@ -91,35 +92,35 @@ class SessionRecord(BaseRecord):
 
 
 class ProfileDefinition(BaseRecord):
-    name: str = Field(min_length=1)
+    name: Identifier
     backend: str = Field(min_length=1)
     settings: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
 
 
 class HistoryEvent(BaseRecord):
-    id: str = Field(min_length=1)
-    task_id: str = Field(min_length=1)
+    id: Identifier
+    task_id: Identifier
     kind: EventKind
     created_at: datetime = Field(default_factory=_utc_now)
     summary: str = Field(min_length=1)
-    session_id: str | None = None
+    session_id: Identifier | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class HandoffMetadata(BaseRecord):
-    id: str = Field(min_length=1)
-    task_id: str = Field(min_length=1)
+    id: Identifier
+    task_id: Identifier
     created_at: datetime = Field(default_factory=_utc_now)
-    source_session_ids: list[str] = Field(default_factory=list)
+    source_session_ids: list[Identifier] = Field(default_factory=list)
     title: str = Field(min_length=1)
     path: str = Field(min_length=1)
 
 
 class SearchRecord(BaseRecord):
-    id: str = Field(min_length=1)
+    id: Identifier
     record_type: Literal["task", "session", "handoff", "event"]
-    source_id: str = Field(min_length=1)
+    source_id: Identifier
     text: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 

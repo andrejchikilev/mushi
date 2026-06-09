@@ -43,7 +43,128 @@ Dependencies:
 
 Goal: Implement source-of-truth persistence for tasks, sessions, profiles, handoffs, and append-friendly history.
 
+### Phase 2.1: Storage Layout Contract
+
+Goal: Define the on-disk structure without implementing read/write behavior.
+
 Deliverables:
+- Documented storage root layout for tasks, sessions, events, profiles, handoffs, and derived data.
+- Pure path-building helpers for each primary record type.
+- Explicit rule that derived directories are rebuildable and not source of truth.
+- Tests for path generation using temporary roots and stable ids.
+
+Risks:
+- A vague layout will leak into later APIs and be hard to migrate.
+- Putting derived data beside primary records can make source-of-truth boundaries unclear.
+
+Dependencies:
+- Phase 1 record ids and schema categories.
+
+### Phase 2.2: JSON Serialization Boundary
+
+Goal: Convert Phase 1 records to and from filesystem-safe JSON consistently.
+
+Deliverables:
+- Shared serialization/deserialization helpers for Pydantic records.
+- Schema validation on load.
+- Consistent datetime JSON behavior.
+- Tests for valid round trips and invalid JSON/schema failures.
+
+Risks:
+- Inconsistent serialization will make future migrations difficult.
+- Silent acceptance of unknown fields can hide corrupted or stale records.
+
+Dependencies:
+- Phase 2.1 path helpers.
+- Phase 1 schemas with `extra="forbid"` validation.
+
+### Phase 2.3: Atomic File Writes
+
+Goal: Add safe write primitives before storing real records.
+
+Deliverables:
+- Atomic write helper using a temporary file followed by replace.
+- Parent directory creation for writes.
+- Read helper with clear missing-file and invalid-file errors.
+- Tests for successful writes, overwrites, missing files, and cleanup of failed temp writes where practical.
+
+Risks:
+- Partial writes can corrupt long-lived task context.
+- Low-level errors can become hard to diagnose if exceptions are too generic.
+
+Dependencies:
+- Phase 2.2 serialization helpers.
+
+### Phase 2.4: Task Storage
+
+Goal: Persist and retrieve `TaskRecord` as the first source-of-truth record.
+
+Deliverables:
+- Save/load task operations.
+- Task existence check.
+- List task ids or records from the storage root.
+- Tests for create, overwrite/update, load missing task, list empty storage, and list multiple tasks.
+
+Risks:
+- Listing behavior can accidentally depend on directory ordering.
+- Updating full records without care can hide future concurrency issues.
+
+Dependencies:
+- Phase 2.3 atomic file writes.
+
+### Phase 2.5: Session and Profile Storage
+
+Goal: Persist session metadata and profile definitions without invoking backends.
+
+Deliverables:
+- Save/load session operations scoped by task id and session id.
+- Save/load/list profile operations.
+- Tests for session round trips, missing task/session paths, profile round trips, and invalid loaded records.
+
+Risks:
+- Session storage may accidentally assume backend-specific transcript formats.
+- Profile storage may fail to preserve unknown backend-specific settings.
+
+Dependencies:
+- Phase 2.4 task storage.
+
+### Phase 2.6: Append-Only History Events
+
+Goal: Store meaningful task history without rewriting prior events.
+
+Deliverables:
+- Append event operation for `HistoryEvent`.
+- List events for a task in deterministic order.
+- Duplicate event id behavior defined and tested.
+- Tests for append, list empty history, ordering, and invalid event records.
+
+Risks:
+- Mutable history weakens auditability.
+- Ordering by filename rather than event timestamp can produce confusing histories unless defined explicitly.
+
+Dependencies:
+- Phase 2.4 task storage.
+- Phase 2.3 atomic file writes.
+
+### Phase 2.7: Handoff Metadata and Derived Data Boundaries
+
+Goal: Persist handoff metadata and prove derived data is optional.
+
+Deliverables:
+- Save/load handoff metadata operations.
+- Reserved derived-data paths for future search indexes and caches.
+- Tests that primary record operations work when derived directories are missing or deleted.
+- Tests for handoff metadata round trips and missing handoff errors.
+
+Risks:
+- Generated handoff documents can be confused with handoff metadata source of truth.
+- Derived data may accidentally become required by primary storage tests.
+
+Dependencies:
+- Phase 2.3 atomic file writes.
+- Phase 2.5 session storage.
+
+Deliverables for the full phase:
 - Filesystem layout for primary records and derived data.
 - Read/write/update operations for task records.
 - Read/write operations for session metadata and profile definitions.
