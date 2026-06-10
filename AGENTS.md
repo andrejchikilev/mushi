@@ -10,6 +10,8 @@
 - Install/sync dependencies with `uv sync`.
 - Run tests with `uv run pytest`.
 - Run the CLI with `uv run mushi --help` or `uv run mushi --version`.
+- Dev mode uses `.mushi-dev/` storage root via `.env` (auto-loaded by CLI). For a system-wide install, `uv tool install --reinstall .` uses XDG default (`~/.local/share/mushi/`).
+- When adding a new variable to `.env`, add the same variable to `.env.default` with a placeholder or safe default. `.env.default` is tracked and must never contain secrets (tokens, usernames, passwords, etc.).
 
 ## OpenCode Local Files
 - `.opencode/` is repo-local OpenCode support, not the application package. Its `package.json` only installs `@opencode-ai/plugin` and `.opencode/.gitignore` ignores those files, so avoid treating `.opencode/node_modules` as project source.

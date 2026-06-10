@@ -29,7 +29,25 @@ app.add_typer(profile_app, name="profile")
 app.add_typer(session_app, name="session")
 app.add_typer(handoff_app, name="handoff")
 
-DEFAULT_STORAGE_ROOT = ".mushi"
+def _load_dotenv() -> None:
+    env_path = Path.cwd() / ".env"
+    if env_path.is_file():
+        for line in env_path.read_text().splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, value = stripped.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_dotenv()
+
+
+def _default_storage_root() -> Path:
+    xdg_data = os.environ.get("XDG_DATA_HOME")
+    if xdg_data:
+        return Path(xdg_data) / "mushi"
+    return Path.home() / ".local" / "share" / "mushi"
 
 
 def _version_callback(value: bool) -> None:
@@ -53,12 +71,12 @@ def main(
         Path | None,
         typer.Option(
             "--storage-root",
-            help="Storage root. Defaults to MUSHI_STORAGE_ROOT or .mushi.",
+            help="Storage root. Defaults to MUSHI_STORAGE_ROOT or XDG_DATA_HOME/mushi.",
         ),
     ] = None,
 ) -> None:
     """Mushi command entrypoint."""
-    root = storage_root or Path(os.environ.get("MUSHI_STORAGE_ROOT", DEFAULT_STORAGE_ROOT))
+    root = storage_root or Path(os.environ.get("MUSHI_STORAGE_ROOT", _default_storage_root()))
     ctx.obj = {"storage": FilesystemStorage(root)}
 
 

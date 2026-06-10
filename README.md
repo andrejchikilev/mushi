@@ -39,7 +39,7 @@ uv tool install --reinstall .
 
 ## Usage
 
-All commands accept `--storage-root` (defaults to `MUSHI_STORAGE_ROOT` env var or `.mushi`).
+Data is stored in `$XDG_DATA_HOME/mushi` (defaults to `~/.local/share/mushi`). Override with `MUSHI_STORAGE_ROOT` env var or `--storage-root`.
 
 ### Tasks
 
