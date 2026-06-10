@@ -52,7 +52,7 @@ Deliverables:
 - Pure path-building helpers for each primary record type.
 - Explicit rule that derived directories are rebuildable and not source of truth.
 - Tests for path generation using temporary roots and stable ids.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-1.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-1.md`.
 
 Risks:
 - A vague layout will leak into later APIs and be hard to migrate.
@@ -70,7 +70,7 @@ Deliverables:
 - Schema validation on load.
 - Consistent datetime JSON behavior.
 - Tests for valid round trips and invalid JSON/schema failures.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-2.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-2.md`.
 
 Risks:
 - Inconsistent serialization will make future migrations difficult.
@@ -89,7 +89,7 @@ Deliverables:
 - Parent directory creation for writes.
 - Read helper with clear missing-file and invalid-file errors.
 - Tests for successful writes, overwrites, missing files, and cleanup of failed temp writes where practical.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-3.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-3.md`.
 
 Risks:
 - Partial writes can corrupt long-lived task context.
@@ -107,7 +107,7 @@ Deliverables:
 - Task existence check.
 - List task ids or records from the storage root.
 - Tests for create, overwrite/update, load missing task, list empty storage, and list multiple tasks.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-4.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-4.md`.
 
 Risks:
 - Listing behavior can accidentally depend on directory ordering.
@@ -124,7 +124,7 @@ Deliverables:
 - Save/load session operations scoped by task id and session id.
 - Save/load/list profile operations.
 - Tests for session round trips, missing task/session paths, profile round trips, and invalid loaded records.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-5.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-5.md`.
 
 Risks:
 - Session storage may accidentally assume backend-specific transcript formats.
@@ -142,7 +142,7 @@ Deliverables:
 - List events for a task in deterministic order.
 - Duplicate event id behavior defined and tested.
 - Tests for append, list empty history, ordering, and invalid event records.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-6.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-6.md`.
 
 Risks:
 - Mutable history weakens auditability.
@@ -161,7 +161,7 @@ Deliverables:
 - Reserved derived-data paths for future search indexes and caches.
 - Tests that primary record operations work when derived directories are missing or deleted.
 - Tests for handoff metadata round trips and missing handoff errors.
-- Manual test guide in `.mushi-dev/manual-test-phase-2-7.md`.
+- Manual test guide in `.mushi/manual-test-phase-2-7.md`.
 
 Risks:
 - Generated handoff documents can be confused with handoff metadata source of truth.
@@ -201,7 +201,7 @@ Deliverables:
 - List and show task operations backed by `FilesystemStorage`.
 - History events for task creation and status changes.
 - Tests for create, duplicate task rejection, status update, list, show, and missing task behavior.
-- Manual test guide in `.mushi-dev/manual-test-phase-3-1.md`.
+- Manual test guide in `.mushi/manual-test-phase-3-1.md`.
 
 Risks:
 - Workflow code may duplicate storage behavior instead of enforcing task lifecycle rules.
@@ -219,7 +219,7 @@ Deliverables:
 - Resolve profile by name into backend plus settings snapshot.
 - Clear error when a requested profile is missing.
 - Tests for profile creation, resolution, missing profiles, and preserving backend-specific settings.
-- Manual test guide in `.mushi-dev/manual-test-phase-3-2.md`.
+- Manual test guide in `.mushi/manual-test-phase-3-2.md`.
 
 Risks:
 - Resolved settings may be hard to audit if sessions only reference a profile name.
@@ -238,7 +238,7 @@ Deliverables:
 - Task `session_ids` update when a session starts.
 - History events for session start and finish.
 - Tests for start, finish, task linkage, missing task, missing profile, and invalid finish status.
-- Manual test guide in `.mushi-dev/manual-test-phase-3-3.md`.
+- Manual test guide in `.mushi/manual-test-phase-3-3.md`.
 
 Risks:
 - Session workflow may assume synchronous backend execution before adapters exist.
@@ -258,7 +258,7 @@ Deliverables:
 - `session start` and `session finish` commands that only record metadata.
 - Storage root option or environment variable for tests and manual use.
 - CLI tests using isolated temporary storage roots.
-- Manual test guide in `.mushi-dev/manual-test-phase-3-4.md`.
+- Manual test guide in `.mushi/manual-test-phase-3-4.md`.
 
 Risks:
 - CLI argument choices can become hard to change once documented.
@@ -274,7 +274,7 @@ Goal: Document the manual Phase 3 smoke path and verify end-to-end metadata reco
 Deliverables:
 - README or docs update with exact `uv run mushi ...` examples for Phase 3 commands.
 - Tests covering a create-task, create-profile, start-session, finish-session flow.
-- Manual test guide in `.mushi-dev/manual-test-phase-3-5.md`.
+- Manual test guide in `.mushi/manual-test-phase-3-5.md`.
 - Updated `AGENTS.md` only if verification commands change.
 
 Risks:
@@ -313,7 +313,7 @@ Deliverables:
 - Canonical adapter result type with status, transcript ref, backend version, and optional error details.
 - Stub adapter that implements the protocol for testing.
 - Tests that exercise the full protocol through the stub adapter.
-- Manual test guide in `.mushi-dev/manual-test-phase-4-1.md`.
+- Manual test guide in `.mushi/manual-test-phase-4-1.md`.
 
 Risks:
 - Overly abstract interface may not fit all future backend (Claude Code, Codex, Aider) special cases.
@@ -334,7 +334,7 @@ Deliverables:
 - Capture of stdout/stderr and transcript file reference when available.
 - Normalization of exit code into an adapter result status.
 - Shim-based tests that replace the real `cursor` binary with a controlled script returning known output and exit codes.
-- Manual test guide in `.mushi-dev/manual-test-phase-4-2.md`.
+- Manual test guide in `.mushi/manual-test-phase-4-2.md`.
 
 Risks:
 - `cursor` CLI flags and output format may change between versions without notice.
@@ -355,7 +355,7 @@ Deliverables:
 - Capture of stdout/stderr and transcript reference.
 - Normalization of exit code into adapter result status.
 - Shim-based tests with a controlled script replacing the real `opencode` binary.
-- Manual test guide in `.mushi-dev/manual-test-phase-4-3.md`.
+- Manual test guide in `.mushi/manual-test-phase-4-3.md`.
 
 Risks:
 - `opencode` CLI flags and output format may change between versions.
@@ -375,7 +375,7 @@ Deliverables:
 - Fallback or stub adapter for backends not yet implemented.
 - CLI tests using shim backend that verify the full invocation flow through the existing `session start`/`session finish` commands.
 - Error handling: missing backend, unavailable backend, non-zero exit, timeout.
-- Manual test guide in `.mushi-dev/manual-test-phase-4-4.md`.
+- Manual test guide in `.mushi/manual-test-phase-4-4.md`.
 
 Risks:
 - Real backend execution during tests would make tests slow, flaky, and environment-dependent.
@@ -395,7 +395,7 @@ Goal: Validate the adapter boundary end-to-end with optional live integration ch
 Deliverables:
 - Optional pytest markers (`pytest.mark.live`) for tests that require real `cursor` or `opencode` binaries.
 - Shim adapter tests running in CI without live backends.
-- Manual test guide in `.mushi-dev/manual-test-phase-4-5.md` covering: shim invocation, live availability check, transcript capture inspection, and cleanup.
+- Manual test guide in `.mushi/manual-test-phase-4-5.md` covering: shim invocation, live availability check, transcript capture inspection, and cleanup.
 - Updated `AGENTS.md` if adapter CLI commands or verification flows changed.
 
 Risks:
@@ -418,7 +418,7 @@ Deliverables:
 - `HandoffBuilder` service that collects data from storage by task id.
 - Builder interface for optionally including session transcripts and user notes.
 - Tests for structured data output with known task, sessions, and events.
-- Manual test guide in `.mushi-dev/manual-test-phase-5-1.md`.
+- Manual test guide in `.mushi/manual-test-phase-5-1.md`.
 
 Risks:
 - Building handoffs may pull too much data into memory for large histories.
@@ -437,7 +437,7 @@ Deliverables:
 - Sections: task summary, status, history timeline, session table, user notes.
 - The output is backend-neutral and contains provenance links.
 - Tests for expected markdown structure, missing data handling, and large history rendering.
-- Manual test guide in `.mushi-dev/manual-test-phase-5-2.md`.
+- Manual test guide in `.mushi/manual-test-phase-5-2.md`.
 
 Risks:
 - Markdown format may need to change as handoff requirements evolve.
@@ -456,7 +456,7 @@ Deliverables:
 - `HandoffMetadata` record saved alongside the generated document.
 - Redaction pass applied to `metadata` fields and user notes before rendering.
 - Tests for full generation flow: build → redact → render → save.
-- Manual test guide in `.mushi-dev/manual-test-phase-5-3.md`.
+- Manual test guide in `.mushi/manual-test-phase-5-3.md`.
 
 Risks:
 - Redaction before rendering may miss sensitive content in session summaries.
@@ -476,7 +476,7 @@ Deliverables:
 - `handoff show <handoff-id>` command that prints the markdown content.
 - Handoff output directory option or default (e.g., `.mushi/handoffs/`).
 - CLI tests using isolated storage and known task data.
-- Manual test guide in `.mushi-dev/manual-test-phase-5-4.md`.
+- Manual test guide in `.mushi/manual-test-phase-5-4.md`.
 
 Risks:
 - Handoff output path should not conflict with handoff metadata storage path.
@@ -493,7 +493,7 @@ Goal: Cover edge cases, verify redaction, and document manual smoke tests.
 Deliverables:
 - Edge case tests: empty task history, missing sessions, very long summaries.
 - Redaction tests confirming sensitive keys are not present in rendered output.
-- Manual smoke guide in `.mushi-dev/manual-test-phase-5-5.md`.
+- Manual smoke guide in `.mushi/manual-test-phase-5-5.md`.
 - Updated `AGENTS.md` if CLI commands changed.
 
 Risks:
@@ -514,7 +514,7 @@ Deliverables:
 - Context gathering: load previous session `result_summary` or generate a handoff inline and pass it to the adapter.
 - If no adapter is available (test-backend), context is stored in the session record but not passed anywhere.
 - CLI tests using a shim adapter that captures the received prompt and confirms context is included.
-- Manual test guide in `.mushi-dev/manual-test-phase-5-6.md`.
+- Manual test guide in `.mushi/manual-test-phase-5-6.md`.
 
 Risks:
 - Long handoff text may exceed CLI argument length limits; might need file-based context passing.
@@ -530,39 +530,142 @@ Dependencies:
 
 Goal: Make stored task context discoverable through simple, rebuildable search over primary records and generated handoffs.
 
+### Phase 6.1: Search Index Builder
+
+Goal: Walk storage and build a rebuildable SearchRecord index in the derived directory.
+
 Deliverables:
-- Search API or CLI over task titles, statuses, tags, backend, profile, repository path, summaries, notes, and handoffs.
-- Simple filesystem scan or rebuildable index.
-- Filters for time range, backend, profile, and task status.
-- Rebuild command for derived search data if an index is introduced.
-- Tests proving search works after derived data is deleted and rebuilt.
-- Manual test guide in `.mushi-dev/manual-test-phase-6.md`.
+- `SearchBuilder` service that scans all tasks, sessions, handoff metadata, and events.
+- Extracts searchable text from each record (titles, summaries, goals, notes).
+- Writes `SearchRecord` entries to `derived/search/` directory.
+- Records are rebuildable: deleting `derived/` and rebuilding produces the same result.
+- Tests for index building, empty storage, and rebuild consistency.
+- Manual test guide in `.mushi/manual-test-phase-6-1.md`.
 
 Risks:
-- Premature indexing complexity can make storage harder to evolve.
-- Search results may become inconsistent if derived data is not clearly rebuildable.
-- Transcript content can be large or sensitive if indexed without limits and redaction.
+- Large histories may produce many search records; simple scanning keeps it safe for MVP.
 
 Dependencies:
-- Phase 2 primary storage.
-- Phase 5 handoff records.
-- Redaction rules from Phase 1.
+- Phase 2 primary storage (tasks, sessions, events, handoffs).
+
+### Phase 6.2: Search Query API
+
+Goal: Query the index with text matching and metadata filters.
+
+Deliverables:
+- `SearchQuery` dataclass with fields: `text`, `record_type`, `backend`, `profile`, `task_status`, `tags`.
+- `Searcher` service that loads SearchRecords from the derived index and filters them.
+- Text matching is case-insensitive substring.
+- Filters are combined with AND logic; empty filter = all results.
+- Tests for various query combinations and empty result sets.
+- Manual test guide in `.mushi/manual-test-phase-6-2.md`.
+
+Risks:
+- Simple substring matching may return too many or too few results; acceptable for MVP.
+
+Dependencies:
+- Phase 6.1 search index builder.
+
+### Phase 6.3: CLI Wiring
+
+Goal: Expose search through a CLI command.
+
+Deliverables:
+- `search` command with optional filters: `--text`, `--type`, `--backend`, `--status`.
+- Results printed as a table with id, type, and text snippet.
+- Automatic index rebuild if derived index is missing.
+- CLI tests with known task and session data.
+- Manual test guide in `.mushi/manual-test-phase-6-3.md`.
+
+Risks:
+- Index rebuild on every search may be slow for large data.
+
+Dependencies:
+- Phase 6.2 search query API.
+
+### Phase 6.4: Rebuild and Hardening
+
+Goal: Ensure search index is always rebuildable and test edge cases.
+
+Deliverables:
+- Rebuild command (`search rebuild`) that recreates the index from scratch.
+- Tests: delete derived dir, rebuild, search still works.
+- Edge case tests: no tasks, tasks without sessions, long texts.
+- Manual test guide in `.mushi/manual-test-phase-6-4.md`.
+
+Risks:
+- If rebuild logic drifts from storage format, index may be incomplete.
+
+Dependencies:
+- Phase 6.1 search index builder.
 
 ## Phase 7: MVP Hardening
 
 Goal: Validate the end-to-end MVP against real workflows and document operational expectations.
 
+### Phase 7.1: Error Handling
+
+Goal: Catch and wrap common errors into user-friendly messages.
+
 Deliverables:
-- End-to-end flow: create task, run session with Cursor CLI or OpenCode, record result, generate handoff, search prior context.
-- Error handling for missing backends, invalid profiles, corrupted records, and unavailable workspaces.
-- Migration placeholder or first migration mechanism for schema versions.
-- User-facing setup and usage documentation.
-- `workspace_path` in `session start` and `session resume` made optional, defaulting to `Path.cwd()`.
-- Install workflow: `uv tool install .` for system-wide use, `uv sync` for dev mode.
-- README section with install instructions and CLI examples without explicit `$PWD`.
-- **Interactive adapter mode**: adapters for TUI backends (opencode, cursor) inherit the parent terminal instead of capturing stdout, so the agent UI opens correctly.
-- Manual test guide in `.mushi-dev/manual-test-phase-7.md`.
-- Updated `AGENTS.md` with exact setup and verification commands once the toolchain exists.
+- CLI-level error handling for: missing backends (adapter not found or unavailable), invalid profiles (missing profile name), corrupted records (JSON decode failures), missing workspaces.
+- Workflow-level `RecordNotFoundError` and `RecordConflictError` already exist — ensure they render as clean CLI messages.
+- Tests for each error path through the CLI.
+- Manual test guide in `.mushi/manual-test-phase-7-1.md`.
+
+Risks:
+- Overly defensive error handling can hide real bugs during development.
+
+Dependencies:
+- Phase 5 CLI wiring.
+
+### Phase 7.2: Migration Mechanism
+
+Goal: Add schema version checking and a placeholder for future migrations.
+
+Deliverables:
+- `migration` module with a `check_schema_version(storage)` function that verifies stored record schemas match the current `SCHEMA_VERSION`.
+- Warning when storage contains records with a different schema version.
+- Placeholder `migrate(storage, from_version, to_version)` function that raises `NotImplementedError` until a real migration is needed.
+- Tests for version mismatch detection.
+- Manual test guide in `.mushi/manual-test-phase-7-2.md`.
+
+Risks:
+- Migration code is speculative until a real schema change occurs.
+
+Dependencies:
+- Phase 1 schemas with SCHEMA_VERSION.
+
+### Phase 7.3: End-to-End Docs and AGENTS.md
+
+Goal: Finalize user-facing documentation and agent instructions.
+
+Deliverables:
+- README updated with complete install, usage, and workflow example.
+- `AGENTS.md` updated with current project state and exact commands.
+- Manual test guide in `.mushi/manual-test-phase-7-3.md`.
+
+Risks:
+- Docs can become stale if not updated with each phase.
+
+Dependencies:
+- Phases 0 through 7.2.
+
+### Phase 7.4: Final Manual Test Guide
+
+Goal: Document the complete end-to-end manual smoke test.
+
+Deliverables:
+- `.mushi/manual-test-phase-7-4.md` with full create-task, profile, session, handoff, search, resume flow.
+- Cleanup instructions.
+- Final `uv run pytest` verification.
+- Updated `AGENTS.md` only if CLI commands changed.
+
+Risks:
+- Manual guide may diverge from actual CLI behavior.
+
+Dependencies:
+- Phase 7.3 docs completion.
 
 Risks:
 - Real backend behavior may expose gaps in the adapter contract.

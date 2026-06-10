@@ -66,9 +66,12 @@ class SessionWorkflow:
         self.storage.save_task(updated_task)
 
         resume_summary = ""
+        resume_opencode_id: str | None = None
         if resume_from is not None:
             previous = self.storage.load_session(task_id, resume_from)
             resume_summary = previous.result_summary or ""
+            if previous.backend == "opencode":
+                resume_opencode_id = previous.invocation.get("opencode_session_id")
 
         self.storage.append_event(
             HistoryEvent(
@@ -90,6 +93,8 @@ class SessionWorkflow:
                 adapter_settings = dict(resolved_profile.settings)
                 if resume_summary:
                     adapter_settings["context"] = resume_summary
+                if resume_opencode_id:
+                    adapter_settings["opencode_session_id"] = resume_opencode_id
                 session = self._invoke_adapter(session, adapter, goal, workspace_path, adapter_settings)
 
         return session

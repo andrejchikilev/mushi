@@ -165,3 +165,46 @@ def test_start_session_pass_through_without_get_adapter(tmp_path: Path) -> None:
     )
 
     assert session.status == SessionStatus.RUNNING
+
+
+def test_start_session_resume_passes_opencode_session_id(tmp_path: Path) -> None:
+    """Resuming an opencode session passes opencode_session_id to adapter settings."""
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    session1 = storage.load_session(task_id, "session-1")
+    storage.save_session(
+        session1.model_copy(
+            update={
+                "backend": "opencode",
+                "invocation": {"opencode_session_id": "ses_open123"},
+            }
+        )
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+
+    session2 = workflow.start_session(
+        session_id="session-2",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue",
+        resume_from="session-1",
+    )
+
+    assert session2.status == SessionStatus.SUCCEEDED
+    assert session2.invocation["settings"]["opencode_session_id"] == "ses_open123"
+    assert session2.invocation["settings"]["context"] == "First run done"

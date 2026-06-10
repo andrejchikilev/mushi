@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -9,12 +10,15 @@ import typer
 
 from mushi import __version__
 from mushi.adapters import registry as adapter_registry
+from mushi.core.errors import RecordConflictError, WorkflowError
+from mushi.storage.errors import RecordNotFoundError
+from mushi.storage.filesystem import FilesystemStorage
 from mushi.core.handoffs import HandoffWorkflow
 from mushi.core.profiles import ProfileWorkflow
 from mushi.core.schemas import SessionStatus, TaskStatus
+from mushi.core.search import SearchBuilder, SearchQuery, Searcher
 from mushi.core.sessions import SessionWorkflow
 from mushi.core.tasks import TaskWorkflow
-from mushi.storage.filesystem import FilesystemStorage
 
 app = typer.Typer(
     help="Persistent task and session manager for coding agents.",
@@ -24,10 +28,12 @@ task_app = typer.Typer(help="Task metadata workflows.")
 profile_app = typer.Typer(help="Profile workflows.")
 session_app = typer.Typer(help="Session metadata workflows.")
 handoff_app = typer.Typer(help="Handoff generation workflows.")
+search_app = typer.Typer(help="Search task context.")
 app.add_typer(task_app, name="task")
 app.add_typer(profile_app, name="profile")
 app.add_typer(session_app, name="session")
 app.add_typer(handoff_app, name="handoff")
+app.add_typer(search_app, name="search")
 
 def _load_dotenv() -> None:
     env_path = Path.cwd() / ".env"
@@ -93,7 +99,7 @@ def task_create(
     title: Annotated[str, typer.Argument(help="Task title.")],
 ) -> None:
     """Create a task."""
-    task = TaskWorkflow(_storage(ctx)).create_task(task_id=task_id, title=title)
+    task = _run(lambda: TaskWorkflow(_storage(ctx)).create_task(task_id=task_id, title=title))
     typer.echo(f"created task {task.id}")
 
 
@@ -123,6 +129,34 @@ def task_status(
     """Update task status."""
     task = TaskWorkflow(_storage(ctx)).update_task_status(task_id, status)
     typer.echo(f"updated task {task.id} status {task.status.value}")
+
+
+@task_app.command("resume")
+def task_resume(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Task id.")],
+    goal: Annotated[str | None, typer.Option("--goal", "-g", help="Override goal.")] = None,
+) -> None:
+    """Resume the last session of a task."""
+    storage = _storage(ctx)
+    task = TaskWorkflow(storage).show_task(task_id)
+    if not task.session_ids:
+        typer.echo(f"No sessions for task: {task_id}", err=True)
+        raise typer.Exit(code=1)
+
+    last_id = task.session_ids[-1]
+    prev = storage.load_session(task_id, last_id)
+
+    new_id = _fresh_session_id(last_id, storage, task_id)
+    new_session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
+        session_id=new_id,
+        task_id=task_id,
+        profile_name=prev.profile,
+        workspace_path=prev.workspace_path,
+        goal=goal or prev.goal,
+        resume_from=last_id,
+    )
+    typer.echo(f"resumed {last_id} as {new_session.id} status {new_session.status.value}")
 
 
 @profile_app.command("set")
@@ -198,26 +232,26 @@ def session_finish(
 @session_app.command("resume")
 def session_resume(
     ctx: typer.Context,
-    session_id: Annotated[str, typer.Argument(help="New session id.")],
-    task_id: Annotated[str, typer.Argument(help="Task id.")],
-    profile_name: Annotated[str, typer.Argument(help="Profile name.")],
-    goal: Annotated[str, typer.Argument(help="Session goal.")],
-    resume_from: Annotated[str, typer.Option("--resume-from", help="Previous session id to resume context from.")],
-    workspace_path: Annotated[
-        Path,
-        typer.Argument(help="Workspace path. Defaults to current directory."),
-    ] = Path.cwd(),
+    session_id: Annotated[str, typer.Argument(help="Session id to resume.")],
+    goal: Annotated[str | None, typer.Option("--goal", "-g", help="Override goal.")] = None,
 ) -> None:
-    """Start a session that resumes context from a previous session."""
-    session = SessionWorkflow(_storage(ctx), get_adapter=adapter_registry.get).start_session(
-        session_id=session_id,
-        task_id=task_id,
-        profile_name=profile_name,
-        workspace_path=workspace_path,
-        goal=goal,
-        resume_from=resume_from,
+    """Resume a session. Looks up the session by id and starts a new session that continues the same OpenCode chat."""
+    storage = _storage(ctx)
+    prev = storage.find_session_by_id(session_id)
+    if prev is None:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+
+    new_id = _fresh_session_id(session_id, storage, prev.task_id)
+    new_session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
+        session_id=new_id,
+        task_id=prev.task_id,
+        profile_name=prev.profile,
+        workspace_path=prev.workspace_path,
+        goal=goal or prev.goal,
+        resume_from=session_id,
     )
-    typer.echo(f"session {session.id} status {session.status.value} (resumed from {resume_from})")
+    typer.echo(f"resumed {session_id} as {new_session.id} status {new_session.status.value}")
 
 
 @handoff_app.command("create")
@@ -252,8 +286,75 @@ def handoff_show(
     typer.echo(content)
 
 
+@search_app.command("query")
+def search_query(
+    ctx: typer.Context,
+    text: Annotated[str | None, typer.Option("--text", "-t", help="Text to search for.")] = None,
+    type: Annotated[str | None, typer.Option("--type", help="Record type: task, session, event, handoff.")] = None,
+    backend: Annotated[str | None, typer.Option("--backend", help="Backend name.")] = None,
+    status: Annotated[str | None, typer.Option("--status", help="Task or session status.")] = None,
+) -> None:
+    """Search across tasks, sessions, events, and handoffs."""
+    storage = _storage(ctx)
+    builder = SearchBuilder(storage)
+    if not storage.layout.search_index_dir.exists():
+        builder.build_index()
+
+    searcher = Searcher(storage)
+    query = SearchQuery(
+        text=text or "",
+        record_type=type,
+        backend=backend,
+        task_status=status,
+    )
+    results = searcher.search(query)
+
+    if not results:
+        typer.echo("No results.")
+        return
+
+    for r in results:
+        snippet = r.text[:80].replace("\n", " ")
+        typer.echo(f"{r.id:<30s} {r.record_type:<8s} {snippet}")
+
+
+@search_app.command("rebuild")
+def search_rebuild(ctx: typer.Context) -> None:
+    """Rebuild the search index from scratch."""
+    storage = _storage(ctx)
+    SearchBuilder(storage).rebuild()
+    typer.echo("Search index rebuilt.")
+
+
+def _run(wf_callable: Any) -> Any:
+    """Execute a workflow callable and translate known errors to CLI messages."""
+    try:
+        return wf_callable()
+    except RecordNotFoundError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    except RecordConflictError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    except WorkflowError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+
 def _storage(ctx: typer.Context) -> FilesystemStorage:
     return ctx.ensure_object(dict)["storage"]
+
+
+def _fresh_session_id(base: str, storage: FilesystemStorage, task_id: str) -> str:
+    """Generate a unique session id based on *base* with no collision risk."""
+    candidate = f"r{base}"
+    if not storage.layout.session_path(task_id, candidate).is_file():
+        return candidate
+    for _ in range(100):
+        candidate = f"r{base}-{secrets.token_hex(3)}"
+        if not storage.layout.session_path(task_id, candidate).is_file():
+            return candidate
+    raise RuntimeError(f"Could not generate unique session id for {base}")
 
 
 def _parse_settings(raw_settings: str) -> dict[str, Any]:

@@ -67,6 +67,14 @@ class FilesystemStorage:
         events = [record_from_json(HistoryEvent, read_text_file(path)) for path in event_paths]
         return sorted(events, key=lambda event: (event.created_at, event.id))
 
+    def find_session_by_id(self, session_id: str) -> SessionRecord | None:
+        """Find a session by its ID across all tasks, or return None."""
+        if not self.layout.tasks_dir.exists():
+            return None
+        for path in self.layout.tasks_dir.glob(f"*/sessions/{session_id}.json"):
+            return record_from_json(SessionRecord, read_text_file(path))
+        return None
+
     def save_handoff_metadata(self, handoff: HandoffMetadata) -> None:
         path = self.layout.handoff_metadata_path(handoff.id)
         atomic_write_text(path, record_to_json(handoff))

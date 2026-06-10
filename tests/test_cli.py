@@ -131,17 +131,52 @@ def test_cli_session_resume(tmp_path) -> None:
     )
     assert finish1.exit_code == 0
 
-    resume = runner.invoke(
-        app,
-        [
-            "session", "resume", "session-2", "task-1", "default", "/repo", "Second",
-            "--resume-from", "session-1",
-        ],
-        env=env,
-    )
+    resume = runner.invoke(app, ["session", "resume", "session-1"], env=env)
     assert resume.exit_code == 0
-    assert "session-2" in resume.output
-    assert "resumed from session-1" in resume.output
+    assert "resumed session-1 as rsession-1" in resume.output
+
+
+def test_cli_task_resume(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    create_task = runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    assert create_task.exit_code == 0
+
+    set_profile = runner.invoke(
+        app, ["profile", "set", "default", "test-backend", "--settings", "{}"], env=env
+    )
+    assert set_profile.exit_code == 0
+
+    start1 = runner.invoke(
+        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+    )
+    assert start1.exit_code == 0
+
+    finish1 = runner.invoke(
+        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+    )
+    assert finish1.exit_code == 0
+
+    resume = runner.invoke(app, ["task", "resume", "task-1"], env=env)
+    assert resume.exit_code == 0
+    assert "resumed session-1" in resume.output
+
+
+def test_cli_search(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    create = runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    assert create.exit_code == 0
+
+    result = runner.invoke(app, ["search", "query", "--text", "storage"], env=env)
+    assert result.exit_code == 0
+    assert "task-task-1" in result.output
+
+    rebuild = runner.invoke(app, ["search", "rebuild"], env=env)
+    assert rebuild.exit_code == 0
+    assert "Search index rebuilt" in rebuild.output
 
 
 def test_cli_rejects_non_object_profile_settings(tmp_path) -> None:
