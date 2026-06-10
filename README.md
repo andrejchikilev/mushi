@@ -59,17 +59,29 @@ mushi profile show default
 
 ### Sessions
 
-`workspace_path` is optional — defaults to current directory.
+`workspace_path` is the second positional argument — defaults to current directory.
+`session_id`, `--profile`, `--goal` are optional flags. If omitted:
+
+- `session_id` auto-generated as `s-{N}-{task_id}`
+- `profile` resolved to `default` profile (auto-created with `opencode` if it exists)
+- `goal` omitted — adapter is not invoked
 
 ```bash
-mushi session start session-1 task-1 default "Continue work"
-mushi session finish task-1 session-1 succeeded "Recorded metadata"
+mushi session start task-1                              # minimal, all auto
+mushi session start task-1 /path/to/repo                # custom workspace
+mushi session start task-1 --session-id s1              # explicit session id
+mushi session start task-1 --profile default            # explicit profile
+mushi session start task-1 --goal "Continue work"       # with adapter invocation
+mushi session finish s1                                  # only session_id needed
+mushi session list                                       # all sessions
+mushi session list task-1                                # sessions for a task
 ```
 
 ### Resume from previous session
 
 ```bash
-mushi session resume session-2 task-1 default "Next phase" --resume-from session-1
+mushi session resume session-1
+mushi task resume task-1                                 # last session of a task
 ```
 
 ### Handoffs
@@ -77,4 +89,12 @@ mushi session resume session-2 task-1 default "Next phase" --resume-from session
 ```bash
 mushi handoff create task-1 --notes "Context for next agent"
 mushi handoff show handoff-task-1
+```
+
+### Search
+
+```bash
+mushi search query "storage"                              # full-text search
+mushi search query --type session --backend cursor        # filtered search
+mushi search rebuild                                      # rebuild search index
 ```

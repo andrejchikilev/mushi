@@ -1,9 +1,9 @@
 # AGENTS.md
 
 ## Project State
-- Mushi is intended to be a persistent task/session manager for coding agents with interchangeable Cursor CLI and OpenCode backends; this is stated in `README.md` but not implemented in tracked source yet.
+- Mushi is intended to be a persistent task/session manager for coding agents with interchangeable Cursor CLI and OpenCode backends; this is stated in `README.md` and implemented via adapter protocol with Cursor CLI and OpenCode adapters (Phase 4).
 - The repo now has a Python package manifest and basic pytest config, but no lint/typecheck config, CI workflow, or task runner yet. Do not invent commands such as `ruff` or `mypy` until executable config is added.
-- Current implementation: domain schemas (Phase 1), filesystem storage (Phase 2), task/session/profile workflows with CLI (Phase 3), backend adapter protocol with Cursor CLI and OpenCode adapters and CLI integration (Phase 4), handoff generation and session resume (Phase 5), search (Phase 6), MVP hardening with error handling and migration placeholder (Phase 7).
+- Current implementation: domain schemas (Phase 1), filesystem storage (Phase 2), task/session/profile workflows with CLI (Phase 3, enhanced with auto-generated session IDs and auto-resolved profiles), backend adapter protocol with Cursor CLI and OpenCode adapters and CLI integration (Phase 4), handoff generation and session resume (Phase 5), search (Phase 6), MVP hardening with error handling and migration placeholder (Phase 7).
 
 ## Tooling
 - Use `uv` for Python dependency management, environment setup, running project commands, and lockfile updates. Do not introduce `pip`, direct `python` runner conventions, Poetry, Pipenv, or ad-hoc virtualenv workflows unless the repo explicitly changes direction.
