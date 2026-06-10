@@ -27,10 +27,10 @@ class OpenCodeAdapter(CliAdapterBase, BackendAdapter):
 
     def _build_invoke_args(self, goal: str, settings: dict[str, Any]) -> list[str]:
         extra_args: list[str] = settings.get("extra_args", [])
-        prompt = with_context(goal, settings)
         opencode_session_id: str | None = settings.get("opencode_session_id")
         if opencode_session_id:
-            return ["--prompt", prompt, "--session", opencode_session_id, *extra_args]
+            return ["--session", opencode_session_id, *extra_args]
+        prompt = with_context(goal, settings)
         return ["--prompt", prompt, *extra_args]
 
     def invoke(

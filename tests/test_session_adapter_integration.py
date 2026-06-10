@@ -208,3 +208,46 @@ def test_start_session_resume_passes_opencode_session_id(tmp_path: Path) -> None
     assert session2.status == SessionStatus.SUCCEEDED
     assert session2.invocation["settings"]["opencode_session_id"] == "ses_open123"
     assert session2.invocation["settings"]["context"] == "First run done"
+
+
+def test_start_session_resume_passes_cursor_agent_id(tmp_path: Path) -> None:
+    """Resuming a cursor session passes cursor_agent_id to adapter settings."""
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    session1 = storage.load_session(task_id, "session-1")
+    storage.save_session(
+        session1.model_copy(
+            update={
+                "backend": "cursor",
+                "invocation": {"cursor_agent_id": "cursor-agent-xyz"},
+            }
+        )
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+
+    session2 = workflow.start_session(
+        session_id="session-2",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue",
+        resume_from="session-1",
+    )
+
+    assert session2.status == SessionStatus.SUCCEEDED
+    assert session2.invocation["settings"]["cursor_agent_id"] == "cursor-agent-xyz"
+    assert session2.invocation["settings"]["context"] == "First run done"

@@ -67,11 +67,14 @@ class SessionWorkflow:
 
         resume_summary = ""
         resume_opencode_id: str | None = None
+        resume_cursor_id: str | None = None
         if resume_from is not None:
             previous = self.storage.load_session(task_id, resume_from)
             resume_summary = previous.result_summary or ""
             if previous.backend == "opencode":
                 resume_opencode_id = previous.invocation.get("opencode_session_id")
+            elif previous.backend == "cursor":
+                resume_cursor_id = previous.invocation.get("cursor_agent_id")
 
         self.storage.append_event(
             HistoryEvent(
@@ -95,6 +98,8 @@ class SessionWorkflow:
                     adapter_settings["context"] = resume_summary
                 if resume_opencode_id:
                     adapter_settings["opencode_session_id"] = resume_opencode_id
+                if resume_cursor_id:
+                    adapter_settings["cursor_agent_id"] = resume_cursor_id
                 session = self._invoke_adapter(session, adapter, goal, workspace_path, adapter_settings)
 
         return session
@@ -173,3 +178,50 @@ class SessionWorkflow:
             )
         )
         return updated
+
+    def reopen_session(
+        self,
+        *,
+        task_id: str,
+        session_id: str,
+    ) -> SessionRecord:
+        """Re-open a finished session and invoke the backend adapter with its stored session ID."""
+        session = self.storage.load_session(task_id, session_id)
+        now = utc_now()
+        session = session.model_copy(
+            update={
+                "status": SessionStatus.RUNNING,
+                "started_at": now,
+                "ended_at": None,
+            }
+        )
+        self.storage.save_session(session)
+
+        self.storage.append_event(
+            HistoryEvent(
+                id=f"{session.id}-reopened-{now.strftime('%H%M%S')}",
+                task_id=task_id,
+                kind=EventKind.SESSION_STARTED,
+                created_at=now,
+                summary=f"Session reopened for {session.backend} with {session.profile}",
+                session_id=session.id,
+            )
+        )
+
+        if self.get_adapter is not None:
+            adapter = self.get_adapter(session.backend)
+            if adapter is not None:
+                adapter_settings: dict[str, Any] = {}
+                if session.backend == "opencode":
+                    sid = session.invocation.get("opencode_session_id")
+                    if sid:
+                        adapter_settings["opencode_session_id"] = sid
+                elif session.backend == "cursor":
+                    cid = session.invocation.get("cursor_agent_id")
+                    if cid:
+                        adapter_settings["cursor_agent_id"] = cid
+                session = self._invoke_adapter(
+                    session, adapter, session.goal, session.workspace_path, adapter_settings,
+                )
+
+        return session

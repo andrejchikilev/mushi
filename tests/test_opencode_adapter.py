@@ -181,7 +181,7 @@ def test_opencode_invoke_detection_only_finds_new_sessions(
 
 
 def test_opencode_invoke_passes_session_flag_when_set(shim_env: Path) -> None:
-    """When settings contains opencode_session_id, ``--session <id>`` is added to args."""
+    """When settings contains opencode_session_id, only ``--session <id>`` is used (no --prompt)."""
     adapter = OpenCodeAdapter()
     result = adapter.invoke(
         goal="fix bug",
@@ -190,18 +190,4 @@ def test_opencode_invoke_passes_session_flag_when_set(shim_env: Path) -> None:
     )
 
     assert result.status == "succeeded"
-    assert "--session" in result.invocation["args"]
-    assert result.invocation["args"][result.invocation["args"].index("--session") + 1] == "ses_abc123"
-
-
-def test_opencode_invoke_with_session_flag_still_uses_prompt(shim_env: Path) -> None:
-    """When ``--session`` is used, ``--prompt`` is still present."""
-    adapter = OpenCodeAdapter()
-    result = adapter.invoke(
-        goal="fix bug",
-        workspace_path=str(shim_env),
-        settings={"opencode_session_id": "ses_abc123"},
-    )
-
-    assert "--prompt" in result.invocation["args"]
-    assert "--session" in result.invocation["args"]
+    assert result.invocation["args"] == ["--session", "ses_abc123"]

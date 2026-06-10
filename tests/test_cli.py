@@ -133,7 +133,7 @@ def test_cli_session_resume(tmp_path) -> None:
 
     resume = runner.invoke(app, ["session", "resume", "session-1"], env=env)
     assert resume.exit_code == 0
-    assert "resumed session-1 as rsession-1" in resume.output
+    assert "reopened session session-1 status running" in resume.output
 
 
 def test_cli_task_resume(tmp_path) -> None:
@@ -160,7 +160,7 @@ def test_cli_task_resume(tmp_path) -> None:
 
     resume = runner.invoke(app, ["task", "resume", "task-1"], env=env)
     assert resume.exit_code == 0
-    assert "resumed session-1" in resume.output
+    assert "reopened session-1 status running" in resume.output
 
 
 def test_cli_search(tmp_path) -> None:

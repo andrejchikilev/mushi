@@ -96,3 +96,16 @@ def test_cursor_invoke_propagates_extra_args_from_settings(shim_env: Path) -> No
     )
 
     assert result.invocation["args"] == ["agent", "fix bug", "--model", "gpt4"]
+
+
+def test_cursor_invoke_adds_resume_flag_when_agent_id_in_settings(shim_env: Path) -> None:
+    """When settings contains cursor_agent_id, only ``--resume <id>`` is used (no goal)."""
+    adapter = CursorCliAdapter()
+    result = adapter.invoke(
+        goal="fix bug",
+        workspace_path=str(shim_env),
+        settings={"cursor_agent_id": "abc-123-def"},
+    )
+
+    assert result.status == "succeeded"
+    assert result.invocation["args"] == ["agent", "--resume", "abc-123-def"]

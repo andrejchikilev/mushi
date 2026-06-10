@@ -2,7 +2,7 @@
 
 import json
 import os
-import secrets
+
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -135,9 +135,8 @@ def task_status(
 def task_resume(
     ctx: typer.Context,
     task_id: Annotated[str, typer.Argument(help="Task id.")],
-    goal: Annotated[str | None, typer.Option("--goal", "-g", help="Override goal.")] = None,
 ) -> None:
-    """Resume the last session of a task."""
+    """Re-open the last session of a task."""
     storage = _storage(ctx)
     task = TaskWorkflow(storage).show_task(task_id)
     if not task.session_ids:
@@ -145,18 +144,11 @@ def task_resume(
         raise typer.Exit(code=1)
 
     last_id = task.session_ids[-1]
-    prev = storage.load_session(task_id, last_id)
-
-    new_id = _fresh_session_id(last_id, storage, task_id)
-    new_session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
-        session_id=new_id,
+    reopened = SessionWorkflow(storage, get_adapter=adapter_registry.get).reopen_session(
         task_id=task_id,
-        profile_name=prev.profile,
-        workspace_path=prev.workspace_path,
-        goal=goal or prev.goal,
-        resume_from=last_id,
+        session_id=last_id,
     )
-    typer.echo(f"resumed {last_id} as {new_session.id} status {new_session.status.value}")
+    typer.echo(f"reopened {last_id} status {reopened.status.value}")
 
 
 @profile_app.command("set")
@@ -240,25 +232,19 @@ def session_finish(
 def session_resume(
     ctx: typer.Context,
     session_id: Annotated[str, typer.Argument(help="Session id to resume.")],
-    goal: Annotated[str | None, typer.Option("--goal", "-g", help="Override goal.")] = None,
 ) -> None:
-    """Resume a session. Looks up the session by id and starts a new session that continues the same OpenCode chat."""
+    """Re-open a finished session and continue the same backend chat."""
     storage = _storage(ctx)
     prev = storage.find_session_by_id(session_id)
     if prev is None:
         typer.echo(f"Session not found: {session_id}", err=True)
         raise typer.Exit(code=1)
 
-    new_id = _fresh_session_id(session_id, storage, prev.task_id)
-    new_session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
-        session_id=new_id,
+    reopened = SessionWorkflow(storage, get_adapter=adapter_registry.get).reopen_session(
         task_id=prev.task_id,
-        profile_name=prev.profile,
-        workspace_path=prev.workspace_path,
-        goal=goal or prev.goal,
-        resume_from=session_id,
+        session_id=session_id,
     )
-    typer.echo(f"resumed {session_id} as {new_session.id} status {new_session.status.value}")
+    typer.echo(f"reopened session {reopened.id} status {reopened.status.value}")
 
 
 @session_app.command("list")
@@ -377,16 +363,7 @@ def _storage(ctx: typer.Context) -> FilesystemStorage:
     return ctx.ensure_object(dict)["storage"]
 
 
-def _fresh_session_id(base: str, storage: FilesystemStorage, task_id: str) -> str:
-    """Generate a unique session id based on *base* with no collision risk."""
-    candidate = f"r{base}"
-    if not storage.layout.session_path(task_id, candidate).is_file():
-        return candidate
-    for _ in range(100):
-        candidate = f"r{base}-{secrets.token_hex(3)}"
-        if not storage.layout.session_path(task_id, candidate).is_file():
-            return candidate
-    raise RuntimeError(f"Could not generate unique session id for {base}")
+
 
 
 def _parse_settings(raw_settings: str) -> dict[str, Any]:
