@@ -188,6 +188,13 @@ def profile_show(
     typer.echo(json.dumps(profile.model_dump(mode="json"), indent=2))
 
 
+@profile_app.command("list")
+def profile_list(ctx: typer.Context) -> None:
+    """List profiles."""
+    for profile in ProfileWorkflow(_storage(ctx)).list_profiles():
+        typer.echo(f"{profile.name}\t{profile.backend}")
+
+
 @session_app.command("start")
 def session_start(
     ctx: typer.Context,
@@ -252,6 +259,31 @@ def session_resume(
         resume_from=session_id,
     )
     typer.echo(f"resumed {session_id} as {new_session.id} status {new_session.status.value}")
+
+
+@session_app.command("list")
+def session_list(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Task id.")],
+) -> None:
+    """List sessions for a task."""
+    storage = _storage(ctx)
+    for session in storage.list_sessions(task_id):
+        typer.echo(f"{session.id}\t{session.status.value}\t{session.goal}")
+
+
+@session_app.command("show")
+def session_show(
+    ctx: typer.Context,
+    session_id: Annotated[str, typer.Argument(help="Session id.")],
+) -> None:
+    """Show a session by id."""
+    storage = _storage(ctx)
+    session = storage.find_session_by_id(session_id)
+    if session is None:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(session.model_dump(mode="json"), indent=2))
 
 
 @handoff_app.command("create")

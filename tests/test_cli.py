@@ -188,3 +188,43 @@ def test_cli_rejects_non_object_profile_settings(tmp_path) -> None:
 
     assert result.exit_code != 0
     assert "settings must be a JSON object" in result.output
+
+
+def test_cli_profile_list(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    runner.invoke(app, ["profile", "set", "dev", "opencode", "--settings", "{}"], env=env)
+    runner.invoke(app, ["profile", "set", "prod", "cursor", "--settings", "{}"], env=env)
+
+    result = runner.invoke(app, ["profile", "list"], env=env)
+    assert result.exit_code == 0
+    assert "dev\topencode" in result.output
+    assert "prod\tcursor" in result.output
+
+
+def test_cli_session_list_and_show(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "test-backend", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+    )
+    runner.invoke(
+        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+    )
+    runner.invoke(
+        app, ["session", "start", "session-2", "task-1", "default", "/repo", "Second"], env=env
+    )
+
+    list_result = runner.invoke(app, ["session", "list", "task-1"], env=env)
+    assert list_result.exit_code == 0
+    assert "session-1\tsucceeded\t" in list_result.output
+    assert "session-2\trunning\t" in list_result.output
+
+    show_result = runner.invoke(app, ["session", "show", "session-1"], env=env)
+    assert show_result.exit_code == 0
+    assert '"id": "session-1"' in show_result.output
+    assert '"task_id": "task-1"' in show_result.output

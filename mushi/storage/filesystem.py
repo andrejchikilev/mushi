@@ -75,6 +75,16 @@ class FilesystemStorage:
             return record_from_json(SessionRecord, read_text_file(path))
         return None
 
+    def list_sessions(self, task_id: str) -> list[SessionRecord]:
+        """List all sessions for a task, ordered by creation time."""
+        sessions_dir = self.layout.sessions_dir(task_id)
+        if not sessions_dir.exists():
+            return []
+        return [
+            record_from_json(SessionRecord, read_text_file(p))
+            for p in sorted(sessions_dir.glob("*.json"))
+        ]
+
     def save_handoff_metadata(self, handoff: HandoffMetadata) -> None:
         path = self.layout.handoff_metadata_path(handoff.id)
         atomic_write_text(path, record_to_json(handoff))
