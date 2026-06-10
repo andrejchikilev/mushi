@@ -20,6 +20,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "live: marks tests that require real backend binaries (cursor/opencode). Skip by default.",
+]
 
 [tool.uv.build-backend]
 module-root = ""

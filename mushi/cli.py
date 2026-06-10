@@ -8,6 +8,8 @@ from typing import Annotated, Any
 import typer
 
 from mushi import __version__
+from mushi.adapters import registry as adapter_registry
+from mushi.core.handoffs import HandoffWorkflow
 from mushi.core.profiles import ProfileWorkflow
 from mushi.core.schemas import SessionStatus, TaskStatus
 from mushi.core.sessions import SessionWorkflow
@@ -21,9 +23,11 @@ app = typer.Typer(
 task_app = typer.Typer(help="Task metadata workflows.")
 profile_app = typer.Typer(help="Profile workflows.")
 session_app = typer.Typer(help="Session metadata workflows.")
+handoff_app = typer.Typer(help="Handoff generation workflows.")
 app.add_typer(task_app, name="task")
 app.add_typer(profile_app, name="profile")
 app.add_typer(session_app, name="session")
+app.add_typer(handoff_app, name="handoff")
 
 DEFAULT_STORAGE_ROOT = ".mushi"
 
@@ -138,18 +142,21 @@ def session_start(
     session_id: Annotated[str, typer.Argument(help="Session id.")],
     task_id: Annotated[str, typer.Argument(help="Task id.")],
     profile_name: Annotated[str, typer.Argument(help="Profile name.")],
-    workspace_path: Annotated[Path, typer.Argument(help="Workspace path.")],
     goal: Annotated[str, typer.Argument(help="Session goal.")],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace path. Defaults to current directory."),
+    ] = Path.cwd(),
 ) -> None:
-    """Record a started session without invoking a backend."""
-    session = SessionWorkflow(_storage(ctx)).start_session(
+    """Record a started session and invoke the backend adapter if available."""
+    session = SessionWorkflow(_storage(ctx), get_adapter=adapter_registry.get).start_session(
         session_id=session_id,
         task_id=task_id,
         profile_name=profile_name,
         workspace_path=workspace_path,
         goal=goal,
     )
-    typer.echo(f"started session {session.id}")
+    typer.echo(f"session {session.id} status {session.status.value}")
 
 
 @session_app.command("finish")
@@ -168,6 +175,63 @@ def session_finish(
         result_summary=result_summary,
     )
     typer.echo(f"finished session {session.id} status {session.status.value}")
+
+
+@session_app.command("resume")
+def session_resume(
+    ctx: typer.Context,
+    session_id: Annotated[str, typer.Argument(help="New session id.")],
+    task_id: Annotated[str, typer.Argument(help="Task id.")],
+    profile_name: Annotated[str, typer.Argument(help="Profile name.")],
+    goal: Annotated[str, typer.Argument(help="Session goal.")],
+    resume_from: Annotated[str, typer.Option("--resume-from", help="Previous session id to resume context from.")],
+    workspace_path: Annotated[
+        Path,
+        typer.Argument(help="Workspace path. Defaults to current directory."),
+    ] = Path.cwd(),
+) -> None:
+    """Start a session that resumes context from a previous session."""
+    session = SessionWorkflow(_storage(ctx), get_adapter=adapter_registry.get).start_session(
+        session_id=session_id,
+        task_id=task_id,
+        profile_name=profile_name,
+        workspace_path=workspace_path,
+        goal=goal,
+        resume_from=resume_from,
+    )
+    typer.echo(f"session {session.id} status {session.status.value} (resumed from {resume_from})")
+
+
+@handoff_app.command("create")
+def handoff_create(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Task id.")],
+    notes: Annotated[
+        str | None,
+        typer.Option("--notes", "-n", help="Optional user notes for the handoff."),
+    ] = None,
+) -> None:
+    """Generate a handoff document for a task."""
+    storage = _storage(ctx)
+    handoff_dir = storage.layout.root / "handoffs"
+    workflow = HandoffWorkflow(storage, handoff_dir=str(handoff_dir))
+    meta = workflow.generate(task_id, user_notes=notes or "")
+    typer.echo(f"handoff {meta.id} created at {meta.path}")
+
+
+@handoff_app.command("show")
+def handoff_show(
+    ctx: typer.Context,
+    handoff_id: Annotated[str, typer.Argument(help="Handoff id.")],
+) -> None:
+    """Show the content of a generated handoff."""
+    meta = _storage(ctx).load_handoff_metadata(handoff_id)
+    path = Path(meta.path)
+    if not path.is_file():
+        typer.echo(f"Handoff file not found: {path}", err=True)
+        raise typer.Exit(code=1)
+    content = path.read_text(encoding="utf-8")
+    typer.echo(content)
 
 
 def _storage(ctx: typer.Context) -> FilesystemStorage:

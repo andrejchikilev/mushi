@@ -36,7 +36,7 @@ def test_cli_task_profile_session_workflow(tmp_path) -> None:
 
     set_profile = runner.invoke(
         app,
-        ["profile", "set", "default", "opencode", "--settings", '{"model":"test"}'],
+        ["profile", "set", "default", "test-backend", "--settings", '{"model":"test"}'],
         env=env,
     )
     assert set_profile.exit_code == 0
@@ -48,7 +48,7 @@ def test_cli_task_profile_session_workflow(tmp_path) -> None:
         env=env,
     )
     assert start_session.exit_code == 0
-    assert "started session session-1" in start_session.output
+    assert "session session-1 status running" in start_session.output
 
     finish_session = runner.invoke(
         app,
@@ -76,6 +76,72 @@ def test_cli_task_status_and_list(tmp_path) -> None:
     assert "updated task task-1 status in_progress" in status.output
     assert listing.exit_code == 0
     assert "task-1\tin_progress\tDesign storage" in listing.output
+
+
+def test_cli_handoff_create_and_show(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    create_task = runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    assert create_task.exit_code == 0
+
+    set_profile = runner.invoke(
+        app,
+        ["profile", "set", "default", "opencode", "--settings", "{}"],
+        env=env,
+    )
+    assert set_profile.exit_code == 0
+
+    start = runner.invoke(
+        app,
+        ["session", "start", "session-1", "task-1", "default", "/repo", "Work"],
+        env=env,
+    )
+    assert start.exit_code == 0
+
+    result = runner.invoke(app, ["handoff", "create", "task-1", "--notes", "Manual test"], env=env)
+    assert result.exit_code == 0
+    assert "handoff" in result.output
+    assert "task-1" in result.output
+
+    show = runner.invoke(app, ["handoff", "show", "handoff-task-1"], env=env)
+    assert show.exit_code == 0
+    assert "# Handoff: Design storage" in show.output
+
+
+def test_cli_session_resume(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    create_task = runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    assert create_task.exit_code == 0
+
+    set_profile = runner.invoke(
+        app, ["profile", "set", "default", "test-backend", "--settings", "{}"], env=env
+    )
+    assert set_profile.exit_code == 0
+
+    start1 = runner.invoke(
+        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+    )
+    assert start1.exit_code == 0
+
+    finish1 = runner.invoke(
+        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+    )
+    assert finish1.exit_code == 0
+
+    resume = runner.invoke(
+        app,
+        [
+            "session", "resume", "session-2", "task-1", "default", "/repo", "Second",
+            "--resume-from", "session-1",
+        ],
+        env=env,
+    )
+    assert resume.exit_code == 0
+    assert "session-2" in resume.output
+    assert "resumed from session-1" in resume.output
 
 
 def test_cli_rejects_non_object_profile_settings(tmp_path) -> None:

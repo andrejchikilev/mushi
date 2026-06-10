@@ -1,12 +1,17 @@
 """Session recording workflow operations."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable
 
 from mushi.core.errors import InvalidWorkflowStateError, RecordConflictError
 from mushi.core.profiles import ProfileWorkflow
 from mushi.core.schemas import EventKind, HistoryEvent, SessionRecord, SessionStatus, utc_now
 from mushi.storage.filesystem import FilesystemStorage
 
+if TYPE_CHECKING:
+    from mushi.adapters.protocol import BackendAdapter
 
 FINISH_STATUSES = {SessionStatus.SUCCEEDED, SessionStatus.FAILED, SessionStatus.CANCELLED}
 
@@ -18,9 +23,11 @@ class SessionWorkflow:
         self,
         storage: FilesystemStorage,
         profiles: ProfileWorkflow | None = None,
+        get_adapter: Callable[[str], "BackendAdapter | None"] | None = None,
     ) -> None:
         self.storage = storage
         self.profiles = profiles or ProfileWorkflow(storage)
+        self.get_adapter = get_adapter
 
     def start_session(
         self,
@@ -30,6 +37,7 @@ class SessionWorkflow:
         profile_name: str,
         workspace_path: str | Path,
         goal: str,
+        resume_from: str | None = None,
     ) -> SessionRecord:
         task = self.storage.load_task(task_id)
         if session_id in task.session_ids:
@@ -56,17 +64,77 @@ class SessionWorkflow:
             }
         )
         self.storage.save_task(updated_task)
+
+        resume_summary = ""
+        if resume_from is not None:
+            previous = self.storage.load_session(task_id, resume_from)
+            resume_summary = previous.result_summary or ""
+
         self.storage.append_event(
             HistoryEvent(
                 id=f"{session.id}-started",
                 task_id=task_id,
                 kind=EventKind.SESSION_STARTED,
                 created_at=started_at,
-                summary=f"Session started with {session.backend} using profile {session.profile}",
+                summary=(
+                    f"Session started with {session.backend} using profile {session.profile}"
+                    + (f" (resumed from {resume_from})" if resume_from else "")
+                ),
                 session_id=session.id,
             )
         )
+
+        if self.get_adapter is not None:
+            adapter = self.get_adapter(resolved_profile.backend)
+            if adapter is not None:
+                adapter_settings = dict(resolved_profile.settings)
+                if resume_summary:
+                    adapter_settings["context"] = resume_summary
+                session = self._invoke_adapter(session, adapter, goal, workspace_path, adapter_settings)
+
         return session
+
+    def _invoke_adapter(
+        self,
+        session: SessionRecord,
+        adapter: "BackendAdapter",
+        goal: str,
+        workspace_path: str | Path,
+        settings: dict[str, Any],
+    ) -> SessionRecord:
+        if not adapter.check_available():
+            updated = session.model_copy(
+                update={
+                    "status": SessionStatus.FAILED,
+                    "result_summary": f"{adapter.name} is not available",
+                }
+            )
+            self.storage.save_session(updated)
+            return updated
+
+        result = adapter.invoke(goal=goal, workspace_path=str(workspace_path), settings=settings)
+
+        status_map = {
+            "succeeded": SessionStatus.SUCCEEDED,
+            "failed": SessionStatus.FAILED,
+            "cancelled": SessionStatus.CANCELLED,
+        }
+        new_status = status_map.get(result.status, SessionStatus.FAILED)
+
+        updated = session.model_copy(
+            update={
+                "status": new_status,
+                "backend_version": result.backend_version,
+                "invocation": result.invocation,
+                "transcript_refs": result.transcript_refs,
+                "result_summary": result.result_summary,
+            }
+        )
+        if new_status in FINISH_STATUSES:
+            updated = updated.model_copy(update={"ended_at": utc_now()})
+
+        self.storage.save_session(updated)
+        return updated
 
     def finish_session(
         self,

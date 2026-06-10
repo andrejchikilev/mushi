@@ -1,0 +1,167 @@
+"""Tests for adapter integration into SessionWorkflow."""
+
+from pathlib import Path
+
+from mushi.adapters.protocol import AdapterResult, BackendAdapter, BackendCapability
+from mushi.adapters.stub import StubAdapter
+from mushi.core.profiles import ProfileWorkflow
+from mushi.core.schemas import SessionStatus
+from mushi.core.sessions import SessionWorkflow
+from mushi.core.tasks import TaskWorkflow
+from mushi.storage.filesystem import FilesystemStorage
+
+
+def _setup(tmp_path: Path) -> tuple[FilesystemStorage, str]:
+    storage = FilesystemStorage(tmp_path)
+    TaskWorkflow(storage).create_task(task_id="task-1", title="Design storage")
+    ProfileWorkflow(storage).save_profile(
+        name="default",
+        backend="stub",
+        settings={"model": "test"},
+    )
+    return storage, "task-1"
+
+
+def test_start_session_resolves_and_invokes_adapter(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.status == SessionStatus.SUCCEEDED
+    assert session.backend_version == "0.0.0"
+    assert session.result_summary == "Stub invocation succeeded"
+
+
+def test_start_session_records_invocation_metadata(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.invocation["goal"] == "Continue work"
+    assert session.invocation["workspace_path"] == "/repo"
+
+
+def test_start_session_marks_failed_when_adapter_unavailable(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter(available=False)
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.status == SessionStatus.FAILED
+    assert "is not available" in (session.result_summary or "")
+
+
+def test_start_session_uses_fallback_when_no_adapter_registered(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: None)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.status == SessionStatus.RUNNING
+
+
+def test_start_session_resume_passes_context_from_previous_session(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="Storage implemented",
+    )
+
+    session2 = workflow.start_session(
+        session_id="session-2",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Second session",
+        resume_from="session-1",
+    )
+
+    assert session2.status == SessionStatus.SUCCEEDED
+    assert session2.invocation["settings"]["context"] == "Storage implemented"
+
+
+def test_start_session_resume_works_without_adapter(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    workflow = SessionWorkflow(storage)
+
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="Storage done",
+    )
+
+    session2 = workflow.start_session(
+        session_id="session-2",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Second session",
+        resume_from="session-1",
+    )
+
+    assert session2.status == SessionStatus.RUNNING
+
+
+def test_start_session_pass_through_without_get_adapter(tmp_path: Path) -> None:
+    """Backward compat: SessionWorkflow without get_adapter keeps Phase 3 behaviour."""
+    storage, task_id = _setup(tmp_path)
+    workflow = SessionWorkflow(storage)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.status == SessionStatus.RUNNING

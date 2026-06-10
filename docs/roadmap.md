@@ -303,44 +303,228 @@ Dependencies:
 
 Goal: Create the backend adapter interface and implement Cursor CLI and OpenCode adapters behind the same core contract.
 
+### Phase 4.1: Adapter Protocol and Capability Model
+
+Goal: Define the abstract adapter contract and backend capability model without implementing any real CLI invocation.
+
 Deliverables:
-- Adapter interface for availability checks, capability reporting, invocation, transcript/reference capture, and normalized result status.
-- Cursor CLI adapter implementation.
-- OpenCode adapter implementation.
-- Backend capability model for differences such as resume support or transcript export.
-- Adapter tests using fakes or command shims so verification does not require live agent credentials.
-- Manual test guide in `.mushi-dev/manual-test-phase-4.md`.
+- Abstract adapter protocol or ABC with methods for availability check, capability reporting, invocation, transcript reference capture, and normalized result status.
+- Backend capability enum or frozen set model for differences such as resume support or transcript export.
+- Canonical adapter result type with status, transcript ref, backend version, and optional error details.
+- Stub adapter that implements the protocol for testing.
+- Tests that exercise the full protocol through the stub adapter.
+- Manual test guide in `.mushi-dev/manual-test-phase-4-1.md`.
 
 Risks:
-- Real backend CLIs may change flags, output formats, or transcript behavior.
-- Treating Cursor CLI or OpenCode as the default model could block future Claude Code, Codex, or Aider support.
-- Live integration tests may be flaky, expensive, or environment-dependent.
+- Overly abstract interface may not fit all future backend (Claude Code, Codex, Aider) special cases.
+- Capability model that is too specific to Cursor/OpenCode may misrepresent Claude Code or Codex.
+- Using ABC may make adapter registration harder than a simpler Protocol-based design.
 
 Dependencies:
 - Phase 3 session workflow and profile resolution.
-- Local availability of Cursor CLI and OpenCode only for manual or optional integration checks.
+
+### Phase 4.2: Cursor CLI Adapter
+
+Goal: Implement the Cursor CLI adapter behind the Phase 4.1 protocol contract.
+
+Deliverables:
+- `CursorCliAdapter` implementing the adapter protocol.
+- Availability check by probing `cursor --version` or equivalent.
+- Command invocation building: construct `cursor` CLI arguments from profile settings.
+- Capture of stdout/stderr and transcript file reference when available.
+- Normalization of exit code into an adapter result status.
+- Shim-based tests that replace the real `cursor` binary with a controlled script returning known output and exit codes.
+- Manual test guide in `.mushi-dev/manual-test-phase-4-2.md`.
+
+Risks:
+- `cursor` CLI flags and output format may change between versions without notice.
+- The real CLI may require authentication or a running daemon, making shim-only tests insufficient for full coverage.
+- Transcript file location or format may be undocumented or version-dependent.
+
+Dependencies:
+- Phase 4.1 adapter protocol and capability model.
+
+### Phase 4.3: OpenCode Adapter
+
+Goal: Implement the OpenCode CLI adapter behind the same Phase 4.1 protocol contract.
+
+Deliverables:
+- `OpenCodeAdapter` implementing the adapter protocol.
+- Availability check by probing `opencode --version` or equivalent.
+- Command invocation building from profile settings.
+- Capture of stdout/stderr and transcript reference.
+- Normalization of exit code into adapter result status.
+- Shim-based tests with a controlled script replacing the real `opencode` binary.
+- Manual test guide in `.mushi-dev/manual-test-phase-4-3.md`.
+
+Risks:
+- `opencode` CLI flags and output format may change between versions.
+- The real CLI may behave differently depending on environment variables and installed plugins.
+- OpenCode's session/transcript model may differ substantially from Cursor's.
+
+Dependencies:
+- Phase 4.1 adapter protocol and capability model.
+
+### Phase 4.4: CLI Integration
+
+Goal: Wire the backend adapters into the existing `session start` workflow so that a real or shim backend is invoked and its result is recorded.
+
+Deliverables:
+- Backend lookup by name from session profile (e.g., `opencode` → `OpenCodeAdapter`).
+- Session workflow integration: on `session start`, resolve adapter, check availability, invoke backend, record result.
+- Fallback or stub adapter for backends not yet implemented.
+- CLI tests using shim backend that verify the full invocation flow through the existing `session start`/`session finish` commands.
+- Error handling: missing backend, unavailable backend, non-zero exit, timeout.
+- Manual test guide in `.mushi-dev/manual-test-phase-4-4.md`.
+
+Risks:
+- Real backend execution during tests would make tests slow, flaky, and environment-dependent.
+- Session workflow changes may break the Phase 3 contract of metadata-only recording before backends exist.
+- The integration layer may need to handle long-running backends asynchronously in the future.
+
+Dependencies:
+- Phase 4.2 Cursor CLI adapter.
+- Phase 4.3 OpenCode adapter.
+- Phase 3.3 session recording workflow.
+- Phase 3.4 CLI wiring.
+
+### Phase 4.5: Test Hardening and Manual Smoke Guide
+
+Goal: Validate the adapter boundary end-to-end with optional live integration checks and document manual verification steps.
+
+Deliverables:
+- Optional pytest markers (`pytest.mark.live`) for tests that require real `cursor` or `opencode` binaries.
+- Shim adapter tests running in CI without live backends.
+- Manual test guide in `.mushi-dev/manual-test-phase-4-5.md` covering: shim invocation, live availability check, transcript capture inspection, and cleanup.
+- Updated `AGENTS.md` if adapter CLI commands or verification flows changed.
+
+Risks:
+- Live integration tests may be skipped locally, masking regressions in real CLI interaction.
+- Manual test guide may drift from actual CLI behavior if backend versions change.
+
+Dependencies:
+- Phase 4.4 CLI integration.
 
 ## Phase 5: Handoff Generation
 
 Goal: Generate useful, backend-neutral handoffs from persisted task context, session summaries, history, and selected transcript references.
 
+### Phase 5.1: Handoff Data Builder
+
+Goal: Collect task metadata, session summaries, events, and user notes into a structured handoff data object.
+
 Deliverables:
-- Handoff template or rendering pipeline.
-- Handoff generation command or API for a task.
-- Handoff records stored separately from source-of-truth task and session records.
-- Redaction pass for sensitive metadata before handoff output.
-- Tests for handoff content, provenance links, missing summaries, and backend-neutral output.
-- Manual test guide in `.mushi-dev/manual-test-phase-5.md`.
+- `HandoffData` frozen dataclass with fields for task info, session summaries, events, notes.
+- `HandoffBuilder` service that collects data from storage by task id.
+- Builder interface for optionally including session transcripts and user notes.
+- Tests for structured data output with known task, sessions, and events.
+- Manual test guide in `.mushi-dev/manual-test-phase-5-1.md`.
 
 Risks:
-- Handoffs may become too verbose to be useful for agents.
-- Backend transcript parsing can pull the core toward backend-specific formats.
-- Missing redaction could persist secrets in generated documents.
+- Building handoffs may pull too much data into memory for large histories.
+- Backend-specific transcript formats may leak into the handoff data model.
 
 Dependencies:
-- Phase 2 storage for handoff records.
-- Phase 3 task/session summaries.
-- Phase 4 adapter-provided transcript references or excerpts where available.
+- Phase 2 task storage, session storage, event storage.
+- Phase 3 task/session workflows.
+
+### Phase 5.2: Handoff Markdown Renderer
+
+Goal: Render a `HandoffData` object into a human-readable markdown handoff document.
+
+Deliverables:
+- `HandoffRenderer` that converts `HandoffData` to a markdown string.
+- Sections: task summary, status, history timeline, session table, user notes.
+- The output is backend-neutral and contains provenance links.
+- Tests for expected markdown structure, missing data handling, and large history rendering.
+- Manual test guide in `.mushi-dev/manual-test-phase-5-2.md`.
+
+Risks:
+- Markdown format may need to change as handoff requirements evolve.
+- Rendering without a template engine may be inflexible for future formats.
+
+Dependencies:
+- Phase 5.1 handoff data builder.
+
+### Phase 5.3: Handoff Workflow Service
+
+Goal: Combine builder, renderer, and storage into a single handoff generation workflow.
+
+Deliverables:
+- `HandoffWorkflow` that orchestrates building, rendering, redacting, and persisting.
+- Generated handoff markdown file written to a configurable directory.
+- `HandoffMetadata` record saved alongside the generated document.
+- Redaction pass applied to `metadata` fields and user notes before rendering.
+- Tests for full generation flow: build → redact → render → save.
+- Manual test guide in `.mushi-dev/manual-test-phase-5-3.md`.
+
+Risks:
+- Redaction before rendering may miss sensitive content in session summaries.
+- Separating metadata storage from document storage can lead to drift.
+
+Dependencies:
+- Phase 5.1 handoff data builder.
+- Phase 5.2 handoff renderer.
+- Phase 2.7 handoff metadata storage.
+
+### Phase 5.4: CLI Wiring
+
+Goal: Expose handoff generation through CLI commands.
+
+Deliverables:
+- `handoff create <task-id>` command that generates a handoff and shows its path.
+- `handoff show <handoff-id>` command that prints the markdown content.
+- Handoff output directory option or default (e.g., `.mushi/handoffs/`).
+- CLI tests using isolated storage and known task data.
+- Manual test guide in `.mushi-dev/manual-test-phase-5-4.md`.
+
+Risks:
+- Handoff output path should not conflict with handoff metadata storage path.
+- CLI output may become verbose for large handoffs.
+
+Dependencies:
+- Phase 5.3 handoff workflow service.
+- Phase 3.4 CLI wiring infrastructure.
+
+### Phase 5.5: Test Hardening and Documentation
+
+Goal: Cover edge cases, verify redaction, and document manual smoke tests.
+
+Deliverables:
+- Edge case tests: empty task history, missing sessions, very long summaries.
+- Redaction tests confirming sensitive keys are not present in rendered output.
+- Manual smoke guide in `.mushi-dev/manual-test-phase-5-5.md`.
+- Updated `AGENTS.md` if CLI commands changed.
+
+Risks:
+- Redaction tests may produce false positives if backends use different naming conventions.
+- Long handoffs may be impractical to assert verbatim in tests.
+
+Dependencies:
+- Phase 5.4 CLI wiring.
+
+### Phase 5.6: Session Resume Workflow
+
+Goal: Allow a new session to resume context from a previous session or generated handoff.
+
+Deliverables:
+- `session resume` CLI command that creates a new session pre-populated with context from a prior session.
+- `OpenCodeAdapter._build_invoke_args` extended to accept optional `context: str` appended to `--prompt`.
+- `SessionWorkflow.start_session` accepts optional `previous_session_id` and `context` for adapter invocation.
+- Context gathering: load previous session `result_summary` or generate a handoff inline and pass it to the adapter.
+- If no adapter is available (test-backend), context is stored in the session record but not passed anywhere.
+- CLI tests using a shim adapter that captures the received prompt and confirms context is included.
+- Manual test guide in `.mushi-dev/manual-test-phase-5-6.md`.
+
+Risks:
+- Long handoff text may exceed CLI argument length limits; might need file-based context passing.
+- Different backends may have different prompt/context passing mechanisms (Cursor vs OpenCode).
+- Resuming without a handoff provides less useful context than resuming with one.
+
+Dependencies:
+- Phase 5.5 CLI wiring for handoff creation.
+- Phase 5.1 handoff data builder (for inline context generation).
+- Phase 4 adapter invoke interface (context passing).
 
 ## Phase 6: Search
 
@@ -373,6 +557,9 @@ Deliverables:
 - Error handling for missing backends, invalid profiles, corrupted records, and unavailable workspaces.
 - Migration placeholder or first migration mechanism for schema versions.
 - User-facing setup and usage documentation.
+- `workspace_path` in `session start` and `session resume` made optional, defaulting to `Path.cwd()`.
+- Install workflow: `uv tool install .` for system-wide use, `uv sync` for dev mode.
+- README section with install instructions and CLI examples without explicit `$PWD`.
 - Manual test guide in `.mushi-dev/manual-test-phase-7.md`.
 - Updated `AGENTS.md` with exact setup and verification commands once the toolchain exists.
 
