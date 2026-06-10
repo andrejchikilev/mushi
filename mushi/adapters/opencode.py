@@ -13,6 +13,9 @@ class OpenCodeAdapter(CliAdapterBase, BackendAdapter):
 
     binary_name = "opencode"
 
+    def __init__(self) -> None:
+        super().__init__(interactive=True)
+
     @property
     def name(self) -> str:
         return "opencode"

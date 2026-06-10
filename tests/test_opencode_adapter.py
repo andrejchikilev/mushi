@@ -48,7 +48,7 @@ def test_opencode_invoke_uses_prompt_flag(shim_env: Path) -> None:
     assert result.status == "succeeded"
     assert result.backend_version == "opencode 2.0.0"
     assert result.invocation["args"] == ["--prompt", "fix bug"]
-    assert "Simulated opencode output" in result.result_summary
+    assert "Exit code" in result.result_summary
 
 
 def test_opencode_invoke_propagates_extra_args(shim_env: Path) -> None:

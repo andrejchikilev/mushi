@@ -14,12 +14,16 @@ class CliAdapterBase:
 
     Subclasses must set ``binary_name`` and may override ``_build_invoke_args``
     and ``_build_version_args``.
+
+    If *interactive* is True, ``invoke`` passes the terminal through to the
+    child process instead of capturing stdout/stderr.
     """
 
     binary_name: str = ""
 
-    def __init__(self) -> None:
+    def __init__(self, *, interactive: bool = False) -> None:
         self._version: str | None = None
+        self._interactive = interactive
 
     def check_available(self) -> bool:
         if not self._binary_on_path():
@@ -44,6 +48,9 @@ class CliAdapterBase:
             self._version = self._detect_version()
 
         args = self._build_invoke_args(goal, settings)
+
+        if self._interactive:
+            return self._invoke_interactive(args, workspace_path)
 
         try:
             proc = self._run_cli(args, cwd=workspace_path)
@@ -71,6 +78,51 @@ class CliAdapterBase:
 
         return AdapterResult(
             status=status,
+            backend_version=self._version,
+            result_summary=summary,
+            invocation={
+                "args": args,
+                "returncode": proc.returncode,
+                "cwd": workspace_path,
+            },
+        )
+
+    def _invoke_interactive(
+        self,
+        args: list[str],
+        workspace_path: str,
+    ) -> AdapterResult:
+        try:
+            proc = subprocess.run(
+                [self.binary_name, *args],
+                cwd=workspace_path,
+                timeout=3600,
+            )
+        except FileNotFoundError:
+            return AdapterResult(
+                status="failed",
+                result_summary=f"{self.binary_name} not found on PATH",
+                error_details="binary not found",
+            )
+        except subprocess.TimeoutExpired:
+            return AdapterResult(
+                status="failed",
+                result_summary=f"{self.binary_name} timed out",
+                error_details="timeout",
+            )
+        except OSError as exc:
+            return AdapterResult(
+                status="failed",
+                result_summary=f"{self.binary_name} invocation failed",
+                error_details=str(exc),
+            )
+
+        summary = f"Exit code {proc.returncode}"
+        if self._version is None:
+            self._version = self._detect_version()
+
+        return AdapterResult(
+            status="succeeded" if proc.returncode == 0 else "failed",
             backend_version=self._version,
             result_summary=summary,
             invocation={

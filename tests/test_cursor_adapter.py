@@ -47,7 +47,7 @@ def test_cursor_invoke_returns_success_result(shim_env: Path) -> None:
 
     assert result.status == "succeeded"
     assert result.backend_version == "cursor 1.2.3"
-    assert "Simulated output" in result.result_summary
+    assert "Exit code" in result.result_summary
 
 
 def test_cursor_invoke_records_invocation_metadata(shim_env: Path) -> None:
@@ -58,7 +58,7 @@ def test_cursor_invoke_records_invocation_metadata(shim_env: Path) -> None:
         settings={"extra_args": ["--model", "gpt4"]},
     )
 
-    assert result.invocation["args"] == ["fix bug", "--model", "gpt4"]
+    assert result.invocation["args"] == ["agent", "fix bug", "--model", "gpt4"]
     assert result.invocation["cwd"] == str(shim_env)
     assert result.invocation["returncode"] == 0
 
@@ -71,7 +71,7 @@ def test_cursor_invoke_appends_context_to_goal(shim_env: Path) -> None:
         settings={"context": "Previous work: design done"},
     )
 
-    arg = result.invocation["args"][0]
+    arg = result.invocation["args"][1]
     assert "Previous work: design done" in arg
     assert arg.startswith("fix bug")
 
@@ -84,7 +84,7 @@ def test_cursor_invoke_without_context_passes_goal_unchanged(shim_env: Path) -> 
         settings={},
     )
 
-    assert result.invocation["args"][0] == "fix bug"
+    assert result.invocation["args"] == ["agent", "fix bug"]
 
 
 def test_cursor_invoke_propagates_extra_args_from_settings(shim_env: Path) -> None:
@@ -95,4 +95,4 @@ def test_cursor_invoke_propagates_extra_args_from_settings(shim_env: Path) -> No
         settings={"extra_args": ["--model", "gpt4"]},
     )
 
-    assert result.invocation["args"] == ["fix bug", "--model", "gpt4"]
+    assert result.invocation["args"] == ["agent", "fix bug", "--model", "gpt4"]

@@ -13,6 +13,9 @@ class CursorCliAdapter(CliAdapterBase, BackendAdapter):
 
     binary_name = "cursor"
 
+    def __init__(self) -> None:
+        super().__init__(interactive=True)
+
     @property
     def name(self) -> str:
         return "cursor"
@@ -25,4 +28,4 @@ class CursorCliAdapter(CliAdapterBase, BackendAdapter):
         from mushi.adapters._cli_base import with_context
 
         extra_args: list[str] = settings.get("extra_args", [])
-        return [with_context(goal, settings), *extra_args]
+        return ["agent", with_context(goal, settings), *extra_args]

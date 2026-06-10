@@ -560,6 +560,7 @@ Deliverables:
 - `workspace_path` in `session start` and `session resume` made optional, defaulting to `Path.cwd()`.
 - Install workflow: `uv tool install .` for system-wide use, `uv sync` for dev mode.
 - README section with install instructions and CLI examples without explicit `$PWD`.
+- **Interactive adapter mode**: adapters for TUI backends (opencode, cursor) inherit the parent terminal instead of capturing stdout, so the agent UI opens correctly.
 - Manual test guide in `.mushi-dev/manual-test-phase-7.md`.
 - Updated `AGENTS.md` with exact setup and verification commands once the toolchain exists.
 
