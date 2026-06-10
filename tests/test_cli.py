@@ -44,7 +44,8 @@ def test_cli_task_profile_session_workflow(tmp_path) -> None:
 
     start_session = runner.invoke(
         app,
-        ["session", "start", "session-1", "task-1", "default", "/repo", "Continue work"],
+        ["session", "start", "task-1", "/repo",
+         "--session-id", "session-1", "--profile", "default", "--goal", "Continue work"],
         env=env,
     )
     assert start_session.exit_code == 0
@@ -52,7 +53,7 @@ def test_cli_task_profile_session_workflow(tmp_path) -> None:
 
     finish_session = runner.invoke(
         app,
-        ["session", "finish", "task-1", "session-1", "succeeded", "Recorded metadata"],
+        ["session", "finish", "session-1"],
         env=env,
     )
     assert finish_session.exit_code == 0
@@ -94,7 +95,8 @@ def test_cli_handoff_create_and_show(tmp_path) -> None:
 
     start = runner.invoke(
         app,
-        ["session", "start", "session-1", "task-1", "default", "/repo", "Work"],
+        ["session", "start", "task-1", "/repo",
+         "--session-id", "session-1", "--profile", "default", "--goal", "Work"],
         env=env,
     )
     assert start.exit_code == 0
@@ -122,12 +124,13 @@ def test_cli_session_resume(tmp_path) -> None:
     assert set_profile.exit_code == 0
 
     start1 = runner.invoke(
-        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "First"], env=env
     )
     assert start1.exit_code == 0
 
     finish1 = runner.invoke(
-        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+        app, ["session", "finish", "session-1"], env=env
     )
     assert finish1.exit_code == 0
 
@@ -149,12 +152,13 @@ def test_cli_task_resume(tmp_path) -> None:
     assert set_profile.exit_code == 0
 
     start1 = runner.invoke(
-        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "First"], env=env
     )
     assert start1.exit_code == 0
 
     finish1 = runner.invoke(
-        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+        app, ["session", "finish", "session-1"], env=env
     )
     assert finish1.exit_code == 0
 
@@ -210,19 +214,21 @@ def test_cli_session_list_and_show(tmp_path) -> None:
     runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
     runner.invoke(app, ["profile", "set", "default", "test-backend", "--settings", "{}"], env=env)
     runner.invoke(
-        app, ["session", "start", "session-1", "task-1", "default", "/repo", "First"], env=env
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "First"], env=env
     )
     runner.invoke(
-        app, ["session", "finish", "task-1", "session-1", "succeeded", "Phase one done"], env=env
+        app, ["session", "finish", "session-1"], env=env
     )
     runner.invoke(
-        app, ["session", "start", "session-2", "task-1", "default", "/repo", "Second"], env=env
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-2", "--profile", "default", "--goal", "Second"], env=env
     )
 
     list_result = runner.invoke(app, ["session", "list", "task-1"], env=env)
     assert list_result.exit_code == 0
-    assert "session-1\tsucceeded\t" in list_result.output
-    assert "session-2\trunning\t" in list_result.output
+    assert "session-1\tsucceeded\ttask-1\t" in list_result.output
+    assert "session-2\trunning\ttask-1\t" in list_result.output
 
     show_result = runner.invoke(app, ["session", "show", "session-1"], env=env)
     assert show_result.exit_code == 0

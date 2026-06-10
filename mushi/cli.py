@@ -2,6 +2,8 @@
 
 import json
 import os
+import re
+import shutil
 
 from pathlib import Path
 from typing import Annotated, Any
@@ -11,11 +13,11 @@ import typer
 from mushi import __version__
 from mushi.adapters import registry as adapter_registry
 from mushi.core.errors import RecordConflictError, WorkflowError
+from mushi.core.profiles import ProfileWorkflow
+from mushi.core.schemas import ProfileDefinition, SessionRecord, SessionStatus, TaskStatus
 from mushi.storage.errors import RecordNotFoundError
 from mushi.storage.filesystem import FilesystemStorage
 from mushi.core.handoffs import HandoffWorkflow
-from mushi.core.profiles import ProfileWorkflow
-from mushi.core.schemas import SessionStatus, TaskStatus
 from mushi.core.search import SearchBuilder, SearchQuery, Searcher
 from mushi.core.sessions import SessionWorkflow
 from mushi.core.tasks import TaskWorkflow
@@ -190,22 +192,38 @@ def profile_list(ctx: typer.Context) -> None:
 @session_app.command("start")
 def session_start(
     ctx: typer.Context,
-    session_id: Annotated[str, typer.Argument(help="Session id.")],
     task_id: Annotated[str, typer.Argument(help="Task id.")],
-    profile_name: Annotated[str, typer.Argument(help="Profile name.")],
-    goal: Annotated[str, typer.Argument(help="Session goal.")],
     workspace_path: Annotated[
-        Path,
+        Path | None,
         typer.Argument(help="Workspace path. Defaults to current directory."),
-    ] = Path.cwd(),
+    ] = None,
+    session_id: Annotated[
+        str | None,
+        typer.Option("--session-id", "-s", help="Session id. Auto-generated if not given."),
+    ] = None,
+    profile_name: Annotated[
+        str | None,
+        typer.Option("--profile", "-p", help="Profile name. Defaults to 'default' profile."),
+    ] = None,
+    goal: Annotated[
+        str | None,
+        typer.Option("--goal", "-g", help="Session goal. If not given, adapter is not invoked."),
+    ] = None,
 ) -> None:
     """Record a started session and invoke the backend adapter if available."""
-    session = SessionWorkflow(_storage(ctx), get_adapter=adapter_registry.get).start_session(
-        session_id=session_id,
+    storage = _storage(ctx)
+    sid = session_id or _next_session_id(storage, task_id)
+    if session_id is not None:
+        if storage.find_session_by_id(session_id) is not None:
+            typer.echo(f"Session already exists: {session_id}", err=True)
+            raise typer.Exit(code=1)
+    profile = _resolve_profile(storage, profile_name)
+    session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
+        session_id=sid,
         task_id=task_id,
-        profile_name=profile_name,
-        workspace_path=workspace_path,
-        goal=goal,
+        profile_name=profile,
+        workspace_path=workspace_path or Path.cwd(),
+        goal=goal or "",
     )
     typer.echo(f"session {session.id} status {session.status.value}")
 
@@ -213,17 +231,20 @@ def session_start(
 @session_app.command("finish")
 def session_finish(
     ctx: typer.Context,
-    task_id: Annotated[str, typer.Argument(help="Task id.")],
     session_id: Annotated[str, typer.Argument(help="Session id.")],
-    status: Annotated[SessionStatus, typer.Argument(help="Final session status.")],
-    result_summary: Annotated[str, typer.Argument(help="Result summary.")],
 ) -> None:
     """Record a finished session without invoking a backend."""
-    session = SessionWorkflow(_storage(ctx)).finish_session(
-        task_id=task_id,
+    storage = _storage(ctx)
+    session = storage.find_session_by_id(session_id)
+    if session is None:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+    # TODO: result_summary will include paths to generated artifacts in the future
+    session = SessionWorkflow(storage).finish_session(
+        task_id=session.task_id,
         session_id=session_id,
-        status=status,
-        result_summary=result_summary,
+        status=SessionStatus.SUCCEEDED,
+        result_summary="",
     )
     typer.echo(f"finished session {session.id} status {session.status.value}")
 
@@ -250,12 +271,18 @@ def session_resume(
 @session_app.command("list")
 def session_list(
     ctx: typer.Context,
-    task_id: Annotated[str, typer.Argument(help="Task id.")],
+    task_id: Annotated[str | None, typer.Argument(help="Task id. If not given, list all sessions.")] = None,
 ) -> None:
-    """List sessions for a task."""
+    """List sessions. If task_id is given, list only for that task."""
     storage = _storage(ctx)
-    for session in storage.list_sessions(task_id):
-        typer.echo(f"{session.id}\t{session.status.value}\t{session.goal}")
+    sessions: list[SessionRecord] = []
+    if task_id is not None:
+        sessions = storage.list_sessions(task_id)
+    else:
+        for task in storage.list_tasks():
+            sessions.extend(storage.list_sessions(task.id))
+    for session in sessions:
+        typer.echo(f"{session.id}\t{session.status.value}\t{session.task_id}\t{session.goal}")
 
 
 @session_app.command("show")
@@ -342,6 +369,33 @@ def search_rebuild(ctx: typer.Context) -> None:
     storage = _storage(ctx)
     SearchBuilder(storage).rebuild()
     typer.echo("Search index rebuilt.")
+
+
+def _next_session_id(storage: FilesystemStorage, task_id: str) -> str:
+    pattern = re.compile(rf"^s-(\d+)-{re.escape(task_id)}$")
+    max_n = 0
+    for session in storage.list_sessions(task_id):
+        m = pattern.match(session.id)
+        if m:
+            n = int(m.group(1))
+            if n > max_n:
+                max_n = n
+    return f"s-{max_n + 1}-{task_id}"
+
+
+def _resolve_profile(storage: FilesystemStorage, name: str | None) -> str:
+    if name is not None:
+        return name
+    try:
+        storage.load_profile("default")
+        return "default"
+    except RecordNotFoundError:
+        pass
+    if shutil.which("opencode"):
+        storage.save_profile(ProfileDefinition(name="default", backend="opencode"))
+        return "default"
+    raise WorkflowError("No profile specified and default profile could not be created. "
+                        "Create a profile first with `profile set` or install opencode.")
 
 
 def _run(wf_callable: Any) -> Any:

@@ -90,7 +90,7 @@ class SessionWorkflow:
             )
         )
 
-        if self.get_adapter is not None:
+        if goal and self.get_adapter is not None:
             adapter = self.get_adapter(resolved_profile.backend)
             if adapter is not None:
                 adapter_settings = dict(resolved_profile.settings)

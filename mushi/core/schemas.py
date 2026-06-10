@@ -76,7 +76,7 @@ class SessionRecord(BaseRecord):
     backend: str = Field(min_length=1)
     profile: Identifier
     workspace_path: str = Field(min_length=1)
-    goal: str = Field(min_length=1)
+    goal: str = ""
     status: SessionStatus = SessionStatus.PLANNED
     started_at: datetime | None = None
     ended_at: datetime | None = None
