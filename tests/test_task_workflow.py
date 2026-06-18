@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from mushi.core.errors import RecordConflictError
-from mushi.core.schemas import EventKind, TaskStatus
+from mushi.core.schemas import EventKind, HandoffMetadata, SessionRecord, TaskStatus
 from mushi.core.tasks import TaskWorkflow
 from mushi.storage.errors import RecordNotFoundError
 from mushi.storage.filesystem import FilesystemStorage
@@ -74,3 +74,38 @@ def test_list_tasks_returns_storage_order(tmp_path: Path) -> None:
     workflow.create_task(task_id="task-a", title="A")
 
     assert [task.id for task in workflow.list_tasks()] == ["task-a", "task-b"]
+
+
+def test_remove_task_deletes_task_sessions_events_and_handoffs(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    workflow = TaskWorkflow(storage)
+    workflow.create_task(task_id="task-1", title="Design storage")
+    storage.save_session(
+        SessionRecord(
+            id="session-1",
+            task_id="task-1",
+            backend="opencode",
+            profile="default",
+            workspace_path="/repo",
+            goal="Continue work",
+        )
+    )
+    doc_path = tmp_path / "handoffs" / "handoff-task-1.md"
+    doc_path.parent.mkdir(parents=True)
+    doc_path.write_text("# Handoff\n", encoding="utf-8")
+    storage.save_handoff_metadata(
+        HandoffMetadata(
+            id="handoff-task-1",
+            task_id="task-1",
+            title="Design storage",
+            path=str(doc_path),
+        )
+    )
+
+    workflow.remove_task("task-1")
+
+    with pytest.raises(RecordNotFoundError):
+        storage.load_task("task-1")
+    assert not storage.layout.task_dir("task-1").exists()
+    assert not storage.layout.handoff_metadata_path("handoff-task-1").exists()
+    assert not doc_path.exists()

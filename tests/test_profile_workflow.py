@@ -58,3 +58,14 @@ def test_list_profiles_returns_storage_order(tmp_path: Path) -> None:
     workflow.save_profile(name="alpha", backend="cursor")
 
     assert [profile.name for profile in workflow.list_profiles()] == ["alpha", "zeta"]
+
+
+def test_remove_profile_deletes_profile(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    workflow = ProfileWorkflow(storage)
+    workflow.save_profile(name="default", backend="opencode")
+
+    workflow.remove_profile("default")
+
+    with pytest.raises(RecordNotFoundError):
+        storage.load_profile("default")

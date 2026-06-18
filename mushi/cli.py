@@ -122,6 +122,16 @@ def task_show(
     typer.echo(json.dumps(task.model_dump(mode="json"), indent=2))
 
 
+@task_app.command("remove")
+def task_remove(
+    ctx: typer.Context,
+    task_id: Annotated[str, typer.Argument(help="Task id.")],
+) -> None:
+    """Remove a task and its sessions, events, and handoffs."""
+    _run(lambda: TaskWorkflow(_storage(ctx)).remove_task(task_id))
+    typer.echo(f"removed task {task_id}")
+
+
 @task_app.command("status")
 def task_status(
     ctx: typer.Context,
@@ -187,6 +197,16 @@ def profile_list(ctx: typer.Context) -> None:
     """List profiles."""
     for profile in ProfileWorkflow(_storage(ctx)).list_profiles():
         typer.echo(f"{profile.name}\t{profile.backend}")
+
+
+@profile_app.command("remove")
+def profile_remove(
+    ctx: typer.Context,
+    name: Annotated[str, typer.Argument(help="Profile name.")],
+) -> None:
+    """Remove a profile."""
+    _run(lambda: ProfileWorkflow(_storage(ctx)).remove_profile(name))
+    typer.echo(f"removed profile {name}")
 
 
 @session_app.command("start")
@@ -266,6 +286,21 @@ def session_resume(
         session_id=session_id,
     )
     typer.echo(f"reopened session {reopened.id} status {reopened.status.value}")
+
+
+@session_app.command("remove")
+def session_remove(
+    ctx: typer.Context,
+    session_id: Annotated[str, typer.Argument(help="Session id.")],
+) -> None:
+    """Remove a session and its session events."""
+    storage = _storage(ctx)
+    session = storage.find_session_by_id(session_id)
+    if session is None:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+    _run(lambda: SessionWorkflow(storage).remove_session(task_id=session.task_id, session_id=session_id))
+    typer.echo(f"removed session {session_id}")
 
 
 @session_app.command("list")

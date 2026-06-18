@@ -68,3 +68,34 @@ def test_handoff_metadata_is_separate_from_generated_handoff_document(tmp_path: 
 
     assert storage.layout.handoff_metadata_path("handoff-1").is_file()
     assert not (tmp_path / "generated" / "handoff-1.md").exists()
+
+
+def test_find_handoffs_for_task_returns_matching_metadata(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    storage.save_handoff_metadata(
+        HandoffMetadata(id="handoff-1", task_id="task-1", title="One", path="handoff-1.md")
+    )
+    storage.save_handoff_metadata(
+        HandoffMetadata(id="handoff-2", task_id="task-2", title="Two", path="handoff-2.md")
+    )
+
+    assert [handoff.id for handoff in storage.find_handoffs_for_task("task-1")] == ["handoff-1"]
+
+
+def test_delete_handoff_removes_metadata_and_document(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    doc_path = tmp_path / "handoffs" / "handoff-1.md"
+    doc_path.parent.mkdir(parents=True)
+    doc_path.write_text("# Handoff\n", encoding="utf-8")
+    handoff = HandoffMetadata(
+        id="handoff-1",
+        task_id="task-1",
+        title="Resume task",
+        path=str(doc_path),
+    )
+    storage.save_handoff_metadata(handoff)
+
+    storage.delete_handoff(handoff)
+
+    assert not storage.layout.handoff_metadata_path("handoff-1").exists()
+    assert not doc_path.exists()

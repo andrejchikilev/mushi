@@ -67,3 +67,9 @@ class TaskWorkflow:
 
     def list_tasks(self) -> list[TaskRecord]:
         return self.storage.list_tasks()
+
+    def remove_task(self, task_id: str) -> None:
+        self.storage.load_task(task_id)
+        for handoff in self.storage.find_handoffs_for_task(task_id):
+            self.storage.delete_handoff(handoff)
+        self.storage.delete_task(task_id)

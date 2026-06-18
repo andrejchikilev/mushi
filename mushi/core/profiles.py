@@ -46,6 +46,10 @@ class ProfileWorkflow:
     def list_profiles(self) -> list[ProfileDefinition]:
         return self.storage.list_profiles()
 
+    def remove_profile(self, name: str) -> None:
+        self.storage.load_profile(name)
+        self.storage.delete_profile(name)
+
     def resolve_profile(self, name: str) -> ResolvedProfile:
         profile = self.storage.load_profile(name)
         return ResolvedProfile(

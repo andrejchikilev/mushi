@@ -234,3 +234,52 @@ def test_cli_session_list_and_show(tmp_path) -> None:
     assert show_result.exit_code == 0
     assert '"id": "session-1"' in show_result.output
     assert '"task_id": "task-1"' in show_result.output
+
+
+def test_cli_profile_remove(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["profile", "set", "default", "opencode", "--settings", "{}"], env=env)
+
+    result = runner.invoke(app, ["profile", "remove", "default"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed profile default" in result.output
+    show = runner.invoke(app, ["profile", "show", "default"], env=env)
+    assert show.exit_code != 0
+
+
+def test_cli_session_remove(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "test-backend", "--settings", "{}"], env=env)
+    runner.invoke(
+        app,
+        ["session", "start", "task-1", "/repo",
+         "--session-id", "session-1", "--profile", "default", "--goal", "First"],
+        env=env,
+    )
+
+    result = runner.invoke(app, ["session", "remove", "session-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed session session-1" in result.output
+    show = runner.invoke(app, ["session", "show", "session-1"], env=env)
+    assert show.exit_code != 0
+    task = runner.invoke(app, ["task", "show", "task-1"], env=env)
+    data = json.loads(task.output)
+    assert data["session_ids"] == []
+
+
+def test_cli_task_remove(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+
+    result = runner.invoke(app, ["task", "remove", "task-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed task task-1" in result.output
+    show = runner.invoke(app, ["task", "show", "task-1"], env=env)
+    assert show.exit_code != 0

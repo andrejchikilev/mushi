@@ -153,3 +153,36 @@ def test_finish_session_rejects_non_final_status(tmp_path: Path) -> None:
             status=SessionStatus.RUNNING,
             result_summary="Still running",
         )
+
+
+def test_remove_session_unlinks_task_and_deletes_session_events(tmp_path: Path) -> None:
+    storage = _storage_with_task_and_profile(tmp_path)
+    workflow = SessionWorkflow(storage)
+    workflow.start_session(
+        session_id="session-1",
+        task_id="task-1",
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+    workflow.start_session(
+        session_id="session-2",
+        task_id="task-1",
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    workflow.remove_session(task_id="task-1", session_id="session-1")
+
+    assert storage.load_task("task-1").session_ids == ["session-2"]
+    with pytest.raises(RecordNotFoundError):
+        storage.load_session("task-1", "session-1")
+    assert [event.session_id for event in storage.list_events("task-1")] == [None, "session-2"]
+
+
+def test_remove_missing_session_raises(tmp_path: Path) -> None:
+    storage = _storage_with_task_and_profile(tmp_path)
+
+    with pytest.raises(RecordNotFoundError):
+        SessionWorkflow(storage).remove_session(task_id="task-1", session_id="missing")

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from mushi.core.errors import InvalidWorkflowStateError, RecordConflictError
+from mushi.core.errors import InvalidWorkflowStateError, RecordConflictError, WorkflowError
 from mushi.core.profiles import ProfileWorkflow
 from mushi.core.schemas import EventKind, HistoryEvent, SessionRecord, SessionStatus, utc_now
 from mushi.storage.filesystem import FilesystemStorage
@@ -178,6 +178,22 @@ class SessionWorkflow:
             )
         )
         return updated
+
+    def remove_session(self, *, task_id: str, session_id: str) -> None:
+        self.storage.load_session(task_id, session_id)
+        task = self.storage.load_task(task_id)
+        if session_id not in task.session_ids:
+            raise WorkflowError(f"Session {session_id} is not linked to task {task_id}")
+
+        updated = task.model_copy(
+            update={
+                "session_ids": [sid for sid in task.session_ids if sid != session_id],
+                "updated_at": utc_now(),
+            }
+        )
+        self.storage.save_task(updated)
+        self.storage.delete_session(task_id, session_id)
+        self.storage.delete_session_events(task_id, session_id)
 
     def reopen_session(
         self,

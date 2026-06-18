@@ -55,3 +55,20 @@ def test_list_tasks_returns_records_in_stable_order(tmp_path: Path) -> None:
     storage.save_task(TaskRecord(id="task-a", title="A"))
 
     assert [task.id for task in storage.list_tasks()] == ["task-a", "task-b"]
+
+
+def test_delete_task_removes_task_directory(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    storage.save_task(TaskRecord(id="task-1", title="Design storage"))
+    storage.layout.sessions_dir("task-1").mkdir(parents=True)
+
+    storage.delete_task("task-1")
+
+    assert not storage.layout.task_dir("task-1").exists()
+
+
+def test_delete_missing_task_raises(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+
+    with pytest.raises(RecordNotFoundError):
+        storage.delete_task("missing")

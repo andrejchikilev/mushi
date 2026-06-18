@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mushi.core.schemas import ProfileDefinition, SessionRecord, TaskRecord
+from mushi.core.schemas import EventKind, HistoryEvent, ProfileDefinition, SessionRecord, TaskRecord
 from mushi.storage.errors import InvalidRecordError, RecordNotFoundError
 from mushi.storage.filesystem import FilesystemStorage
 
@@ -107,3 +107,58 @@ def test_task_and_session_records_are_separate_files(tmp_path: Path) -> None:
 
     assert storage.layout.task_path("task-1").is_file()
     assert storage.layout.session_path("task-1", "session-1").is_file()
+
+
+def test_delete_profile_removes_profile_file(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    storage.save_profile(ProfileDefinition(name="default", backend="opencode"))
+
+    storage.delete_profile("default")
+
+    with pytest.raises(RecordNotFoundError):
+        storage.load_profile("default")
+
+
+def test_delete_session_removes_session_file(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    storage.save_session(
+        SessionRecord(
+            id="session-1",
+            task_id="task-1",
+            backend="opencode",
+            profile="default",
+            workspace_path="/repo",
+            goal="Continue task",
+        )
+    )
+
+    storage.delete_session("task-1", "session-1")
+
+    with pytest.raises(RecordNotFoundError):
+        storage.load_session("task-1", "session-1")
+
+
+def test_delete_session_events_removes_matching_events_only(tmp_path: Path) -> None:
+    storage = FilesystemStorage(tmp_path)
+    storage.append_event(
+        HistoryEvent(
+            id="session-1-started",
+            task_id="task-1",
+            kind=EventKind.SESSION_STARTED,
+            summary="started",
+            session_id="session-1",
+        )
+    )
+    storage.append_event(
+        HistoryEvent(
+            id="session-2-started",
+            task_id="task-1",
+            kind=EventKind.SESSION_STARTED,
+            summary="started",
+            session_id="session-2",
+        )
+    )
+
+    storage.delete_session_events("task-1", "session-1")
+
+    assert [event.id for event in storage.list_events("task-1")] == ["session-2-started"]

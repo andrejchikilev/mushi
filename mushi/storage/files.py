@@ -66,3 +66,13 @@ def atomic_create_text(path: Path, content: str) -> None:
     finally:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
+
+
+def delete_text_file(path: Path) -> None:
+    """Delete a file or raise a storage-specific missing-record error."""
+    try:
+        path.unlink()
+    except FileNotFoundError as error:
+        raise RecordNotFoundError(f"Record not found: {path}") from error
+    except OSError as error:
+        raise StorageError(f"Could not delete record: {path}") from error
