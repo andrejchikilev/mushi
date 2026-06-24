@@ -27,11 +27,16 @@ class CursorCliAdapter(CliAdapterBase, BackendAdapter):
 
     def _build_invoke_args(self, goal: str, settings: dict[str, Any]) -> list[str]:
         extra_args: list[str] = settings.get("extra_args", [])
+        model: str | None = settings.get("model")
         cursor_agent_id: str | None = settings.get("cursor_agent_id")
         if cursor_agent_id:
-            return ["agent", "--resume", cursor_agent_id, *extra_args]
-        prompt = with_context(goal, settings)
-        return ["agent", prompt, *extra_args]
+            args = ["agent", "--resume", cursor_agent_id]
+        else:
+            prompt = with_context(goal, settings)
+            args = ["agent", prompt]
+        if model:
+            args += ["--model", model]
+        return args + extra_args
 
     def invoke(
         self,

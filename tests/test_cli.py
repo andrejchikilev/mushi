@@ -287,6 +287,46 @@ def test_cli_profile_list(tmp_path) -> None:
     assert "prod\tcursor" in result.output
 
 
+def test_cli_profile_set_with_model(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["profile", "set", "default", "opencode", "--model", "claude-sonnet-4-20250514"],
+        env=env,
+    )
+    assert result.exit_code == 0
+
+    show = runner.invoke(app, ["profile", "show", "default"], env=env)
+    assert show.exit_code == 0
+    data = json.loads(show.output)
+    assert data["settings"]["model"] == "claude-sonnet-4-20250514"
+
+
+def test_cli_profile_update_model_without_backend(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        ["profile", "set", "default", "opencode", "--model", "old-model"],
+        env=env,
+    )
+    result = runner.invoke(
+        app,
+        ["profile", "set", "default", "--model", "new-model"],
+        env=env,
+    )
+    assert result.exit_code == 0
+
+    show = runner.invoke(app, ["profile", "show", "default"], env=env)
+    assert show.exit_code == 0
+    data = json.loads(show.output)
+    assert data["settings"]["model"] == "new-model"
+    assert data["backend"] == "opencode"
+
+
 def test_cli_session_list_and_show(tmp_path) -> None:
     env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
     runner = CliRunner()

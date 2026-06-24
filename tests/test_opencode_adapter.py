@@ -113,6 +113,28 @@ def test_opencode_invoke_propagates_extra_args(shim_env: Path) -> None:
     assert result.invocation["args"] == ["--prompt", "fix bug", "--model", "gpt4"]
 
 
+def test_opencode_invoke_passes_model_flag(shim_env: Path) -> None:
+    adapter = OpenCodeAdapter()
+    result = adapter.invoke(
+        goal="fix bug",
+        workspace_path=str(shim_env),
+        settings={"model": "claude-sonnet-4-20250514"},
+    )
+
+    assert result.invocation["args"] == ["--prompt", "fix bug", "--model", "claude-sonnet-4-20250514"]
+
+
+def test_opencode_invoke_model_with_session_flag(shim_env: Path) -> None:
+    adapter = OpenCodeAdapter()
+    result = adapter.invoke(
+        goal="fix bug",
+        workspace_path=str(shim_env),
+        settings={"opencode_session_id": "ses_abc", "model": "claude-sonnet-4-20250514"},
+    )
+
+    assert result.invocation["args"] == ["--session", "ses_abc", "--model", "claude-sonnet-4-20250514"]
+
+
 def test_opencode_invoke_appends_context_to_prompt(shim_env: Path) -> None:
     adapter = OpenCodeAdapter()
     result = adapter.invoke(

@@ -167,18 +167,41 @@ def task_resume(
 def profile_set(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument(help="Profile name.")],
-    backend: Annotated[str, typer.Argument(help="Backend name.")],
+    backend: Annotated[
+        str | None,
+        typer.Argument(help="Backend name. Required for new profiles."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", "-m", help="AI model for the backend."),
+    ] = None,
     settings: Annotated[
-        str,
-        typer.Option("--settings", help="JSON object with backend-specific settings."),
-    ] = "{}",
+        str | None,
+        typer.Option("--settings", help="JSON object merged with existing settings."),
+    ] = None,
 ) -> None:
-    """Create or replace a profile."""
-    profile = ProfileWorkflow(_storage(ctx)).save_profile(
-        name=name,
-        backend=backend,
-        settings=_parse_settings(settings),
-    )
+    """Create or update a profile."""
+    storage = _storage(ctx)
+    workflow = ProfileWorkflow(storage)
+    try:
+        existing = workflow.show_profile(name)
+        new_backend = backend or existing.backend
+        new_settings = dict(existing.settings)
+        if model is not None:
+            new_settings["model"] = model
+        if settings is not None:
+            new_settings.update(_parse_settings(settings))
+    except RecordNotFoundError:
+        if backend is None:
+            raise typer.BadParameter("backend is required when creating a new profile")
+        new_backend = backend
+        new_settings = {}
+        if model is not None:
+            new_settings["model"] = model
+        if settings is not None:
+            new_settings.update(_parse_settings(settings))
+
+    profile = workflow.save_profile(name=name, backend=new_backend, settings=new_settings)
     typer.echo(f"saved profile {profile.name}")
 
 
