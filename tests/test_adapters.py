@@ -82,8 +82,9 @@ def test_stub_adapter_invoke_returns_transcript_refs() -> None:
 
 
 def test_adapter_result_accepts_error_details() -> None:
-    result = StubAdapter(result_status="failed").invoke(
+    result = StubAdapter(result_status="failed", error_details="stack trace").invoke(
         goal="test", workspace_path="/tmp", settings={}
     )
 
     assert result.status == "failed"
+    assert result.error_details == "stack trace"

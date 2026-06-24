@@ -18,6 +18,7 @@ class StubAdapter(BackendAdapter):
         result_summary: str = "Stub invocation succeeded",
         backend_version: str | None = "0.0.0",
         transcript_refs: list[str] | None = None,
+        error_details: str | None = None,
         capabilities: frozenset[BackendCapability] | None = None,
     ) -> None:
         self._available = available
@@ -25,6 +26,7 @@ class StubAdapter(BackendAdapter):
         self._result_summary = result_summary
         self._backend_version = backend_version
         self._transcript_refs = transcript_refs or []
+        self._error_details = error_details
         self._capabilities = capabilities or frozenset()
 
     @property
@@ -50,4 +52,5 @@ class StubAdapter(BackendAdapter):
             transcript_refs=list(self._transcript_refs),
             invocation={"goal": goal, "workspace_path": workspace_path, "settings": settings},
             result_summary=self._result_summary,
+            error_details=self._error_details,
         )

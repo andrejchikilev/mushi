@@ -191,3 +191,24 @@ def test_opencode_invoke_passes_session_flag_when_set(shim_env: Path) -> None:
 
     assert result.status == "succeeded"
     assert result.invocation["args"] == ["--session", "ses_abc123"]
+
+
+def test_opencode_invoke_reports_signal_exit_as_cancelled(shim_env: Path) -> None:
+    shim = shim_env / "opencode"
+    shim.write_text(
+        """#!/usr/bin/env python3
+import os, signal, sys
+if sys.argv[1] == "--version":
+    print("opencode 2.0.0", flush=True)
+    sys.exit(0)
+if sys.argv[1:3] == ["db", "path"]:
+    sys.exit(1)
+os.kill(os.getpid(), signal.SIGINT)
+""",
+    )
+    shim.chmod(0o755)
+
+    result = OpenCodeAdapter().invoke(goal="fix bug", workspace_path=str(shim_env), settings={})
+
+    assert result.status == "cancelled"
+    assert result.invocation["returncode"] < 0

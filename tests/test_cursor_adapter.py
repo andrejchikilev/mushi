@@ -109,3 +109,22 @@ def test_cursor_invoke_adds_resume_flag_when_agent_id_in_settings(shim_env: Path
 
     assert result.status == "succeeded"
     assert result.invocation["args"] == ["agent", "--resume", "abc-123-def"]
+
+
+def test_cursor_invoke_reports_signal_exit_as_cancelled(shim_env: Path) -> None:
+    shim = shim_env / "cursor"
+    shim.write_text(
+        """#!/usr/bin/env python3
+import os, signal, sys
+if sys.argv[1] == "--version":
+    print("cursor 1.2.3", flush=True)
+    sys.exit(0)
+os.kill(os.getpid(), signal.SIGINT)
+""",
+    )
+    shim.chmod(0o755)
+
+    result = CursorCliAdapter().invoke(goal="fix bug", workspace_path=str(shim_env), settings={})
+
+    assert result.status == "cancelled"
+    assert result.invocation["returncode"] < 0

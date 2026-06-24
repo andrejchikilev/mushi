@@ -116,7 +116,9 @@ class SessionWorkflow:
             updated = session.model_copy(
                 update={
                     "status": SessionStatus.FAILED,
-                    "result_summary": f"{adapter.name} is not available",
+                    "result_summary": (
+                        f"{adapter.name} is not available - binary not on PATH or --version failed"
+                    ),
                 }
             )
             self.storage.save_session(updated)
@@ -130,6 +132,10 @@ class SessionWorkflow:
             "cancelled": SessionStatus.CANCELLED,
         }
         new_status = status_map.get(result.status, SessionStatus.FAILED)
+        result_summary = result.result_summary
+        if new_status != SessionStatus.SUCCEEDED and result.error_details:
+            details = f"details: {result.error_details}"
+            result_summary = f"{result_summary} ({details})" if result_summary else details
 
         updated = session.model_copy(
             update={
@@ -137,7 +143,7 @@ class SessionWorkflow:
                 "backend_version": result.backend_version,
                 "invocation": result.invocation,
                 "transcript_refs": result.transcript_refs,
-                "result_summary": result.result_summary,
+                "result_summary": result_summary,
             }
         )
         if new_status in FINISH_STATUSES:
@@ -228,14 +234,21 @@ class SessionWorkflow:
             adapter = self.get_adapter(session.backend)
             if adapter is not None:
                 adapter_settings: dict[str, Any] = {}
+                has_backend_session_id = False
                 if session.backend == "opencode":
                     sid = session.invocation.get("opencode_session_id")
                     if sid:
                         adapter_settings["opencode_session_id"] = sid
+                        has_backend_session_id = True
                 elif session.backend == "cursor":
                     cid = session.invocation.get("cursor_agent_id")
                     if cid:
                         adapter_settings["cursor_agent_id"] = cid
+                        has_backend_session_id = True
+                if session.result_summary:
+                    adapter_settings["context"] = session.result_summary
+                if not has_backend_session_id and not session.goal:
+                    return session
                 session = self._invoke_adapter(
                     session, adapter, session.goal, session.workspace_path, adapter_settings,
                 )

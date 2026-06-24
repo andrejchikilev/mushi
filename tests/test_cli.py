@@ -2,6 +2,8 @@ import json
 
 from typer.testing import CliRunner
 
+from mushi.adapters import registry as adapter_registry
+from mushi.adapters.stub import StubAdapter
 from mushi.cli import app
 
 
@@ -165,6 +167,84 @@ def test_cli_task_resume(tmp_path) -> None:
     resume = runner.invoke(app, ["task", "resume", "task-1"], env=env)
     assert resume.exit_code == 0
     assert "reopened session-1 status running" in resume.output
+
+
+def test_cli_session_resume_warns_when_backend_session_id_is_missing(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "opencode", "--settings", "{}"], env=env)
+    runner.invoke(app, ["session", "start", "task-1", "--session-id", "session-1"], env=env)
+    runner.invoke(app, ["session", "finish", "session-1"], env=env)
+
+    resume = runner.invoke(app, ["session", "resume", "session-1"], env=env)
+
+    assert resume.exit_code == 0
+    assert "has no backend session ID" in resume.output
+    assert "reopened session session-1 status running" in resume.output
+
+
+def test_cli_session_resume_shows_failure_summary(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    adapter_registry.register(
+        "failing-stub",
+        StubAdapter(result_status="failed", result_summary="Backend exited unexpectedly"),
+    )
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "failing-stub", "--settings", "{}"], env=env)
+    runner.invoke(
+        app,
+        ["session", "start", "task-1", "--session-id", "session-1", "--goal", "First"],
+        env=env,
+    )
+
+    resume = runner.invoke(app, ["session", "resume", "session-1"], env=env)
+
+    assert resume.exit_code == 0
+    assert "reopened session session-1 status failed (Backend exited unexpectedly)" in resume.output
+
+
+def test_cli_session_start_no_invoke_skips_adapter(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    adapter_registry.register(
+        "no-invoke-stub",
+        StubAdapter(result_status="failed", result_summary="Should not run"),
+    )
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "no-invoke-stub", "--settings", "{}"], env=env)
+
+    result = runner.invoke(
+        app,
+        ["session", "start", "task-1", "--session-id", "session-1", "--goal", "First", "--no-invoke"],
+        env=env,
+    )
+
+    assert result.exit_code == 0
+    assert "session session-1 status running" in result.output
+
+
+def test_cli_session_resume_no_invoke_skips_adapter(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    adapter_registry.register(
+        "resume-no-invoke-stub",
+        StubAdapter(result_status="failed", result_summary="Should not run"),
+    )
+    runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "resume-no-invoke-stub", "--settings", "{}"], env=env)
+    runner.invoke(
+        app,
+        ["session", "start", "task-1", "--session-id", "session-1", "--goal", "First", "--no-invoke"],
+        env=env,
+    )
+    runner.invoke(app, ["session", "finish", "session-1"], env=env)
+
+    result = runner.invoke(app, ["session", "resume", "session-1", "--no-invoke"], env=env)
+
+    assert result.exit_code == 0
+    assert "reopened session session-1 status running" in result.output
 
 
 def test_cli_search(tmp_path) -> None:

@@ -73,7 +73,7 @@ class CliAdapterBase:
                 error_details=str(exc),
             )
 
-        status = "succeeded" if proc.returncode == 0 else "failed"
+        status = _status_from_returncode(proc.returncode)
         summary = (proc.stdout.strip() or proc.stderr.strip() or f"Exit code {proc.returncode}")[:200]
 
         return AdapterResult(
@@ -107,7 +107,7 @@ class CliAdapterBase:
         except subprocess.TimeoutExpired:
             return AdapterResult(
                 status="failed",
-                result_summary=f"{self.binary_name} timed out",
+                result_summary=f"{self.binary_name} timed out (after 3600s)",
                 error_details="timeout",
             )
         except OSError as exc:
@@ -122,7 +122,7 @@ class CliAdapterBase:
             self._version = self._detect_version()
 
         return AdapterResult(
-            status="succeeded" if proc.returncode == 0 else "failed",
+            status=_status_from_returncode(proc.returncode),
             backend_version=self._version,
             result_summary=summary,
             invocation={
@@ -173,3 +173,11 @@ def with_context(goal: str, settings: dict[str, Any]) -> str:
     if not context:
         return goal
     return f"{goal}\n\nPrevious context:\n{context}"
+
+
+def _status_from_returncode(returncode: int) -> str:
+    if returncode < 0:
+        return "cancelled"
+    if returncode == 0:
+        return "succeeded"
+    return "failed"

@@ -229,6 +229,10 @@ def session_start(
         str | None,
         typer.Option("--goal", "-g", help="Session goal. If not given, adapter is not invoked."),
     ] = None,
+    no_invoke: Annotated[
+        bool,
+        typer.Option("--no-invoke", help="Record the session without invoking the backend adapter."),
+    ] = False,
 ) -> None:
     """Record a started session and invoke the backend adapter if available."""
     storage = _storage(ctx)
@@ -238,7 +242,8 @@ def session_start(
             typer.echo(f"Session already exists: {session_id}", err=True)
             raise typer.Exit(code=1)
     profile = _resolve_profile(storage, profile_name)
-    session = SessionWorkflow(storage, get_adapter=adapter_registry.get).start_session(
+    get_adapter = None if no_invoke else adapter_registry.get
+    session = SessionWorkflow(storage, get_adapter=get_adapter).start_session(
         session_id=sid,
         task_id=task_id,
         profile_name=profile,
@@ -273,6 +278,10 @@ def session_finish(
 def session_resume(
     ctx: typer.Context,
     session_id: Annotated[str, typer.Argument(help="Session id to resume.")],
+    no_invoke: Annotated[
+        bool,
+        typer.Option("--no-invoke", help="Re-open metadata without invoking the backend adapter."),
+    ] = False,
 ) -> None:
     """Re-open a finished session and continue the same backend chat."""
     storage = _storage(ctx)
@@ -280,12 +289,22 @@ def session_resume(
     if prev is None:
         typer.echo(f"Session not found: {session_id}", err=True)
         raise typer.Exit(code=1)
+    if not no_invoke and not _backend_session_id(prev):
+        typer.echo(
+            f"Warning: session {session_id} has no backend session ID. "
+            "Resume may start a new backend session.",
+            err=True,
+        )
 
-    reopened = SessionWorkflow(storage, get_adapter=adapter_registry.get).reopen_session(
+    get_adapter = None if no_invoke else adapter_registry.get
+    reopened = SessionWorkflow(storage, get_adapter=get_adapter).reopen_session(
         task_id=prev.task_id,
         session_id=session_id,
     )
-    typer.echo(f"reopened session {reopened.id} status {reopened.status.value}")
+    message = f"reopened session {reopened.id} status {reopened.status.value}"
+    if reopened.status == SessionStatus.FAILED and reopened.result_summary:
+        message += f" ({reopened.result_summary})"
+    typer.echo(message)
 
 
 @session_app.command("remove")
@@ -431,6 +450,16 @@ def _resolve_profile(storage: FilesystemStorage, name: str | None) -> str:
         return "default"
     raise WorkflowError("No profile specified and default profile could not be created. "
                         "Create a profile first with `profile set` or install opencode.")
+
+
+def _backend_session_id(session: SessionRecord) -> str | None:
+    if session.backend == "opencode":
+        value = session.invocation.get("opencode_session_id")
+        return value if isinstance(value, str) else None
+    if session.backend == "cursor":
+        value = session.invocation.get("cursor_agent_id")
+        return value if isinstance(value, str) else None
+    return None
 
 
 def _run(wf_callable: Any) -> Any:

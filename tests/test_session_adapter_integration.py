@@ -74,6 +74,27 @@ def test_start_session_marks_failed_when_adapter_unavailable(tmp_path: Path) -> 
     assert "is not available" in (session.result_summary or "")
 
 
+def test_start_session_preserves_adapter_error_details(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter(
+        result_status="failed",
+        result_summary="Backend failed",
+        error_details="exit code 2",
+    )
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+
+    session = workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="Continue work",
+    )
+
+    assert session.status == SessionStatus.FAILED
+    assert session.result_summary == "Backend failed (details: exit code 2)"
+
+
 def test_start_session_uses_fallback_when_no_adapter_registered(tmp_path: Path) -> None:
     storage, task_id = _setup(tmp_path)
     workflow = SessionWorkflow(storage, get_adapter=lambda name: None)
@@ -251,3 +272,51 @@ def test_start_session_resume_passes_cursor_agent_id(tmp_path: Path) -> None:
     assert session2.status == SessionStatus.SUCCEEDED
     assert session2.invocation["settings"]["cursor_agent_id"] == "cursor-agent-xyz"
     assert session2.invocation["settings"]["context"] == "First run done"
+
+
+def test_reopen_session_passes_result_summary_as_context(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+
+    reopened = workflow.reopen_session(task_id=task_id, session_id="session-1")
+
+    assert reopened.status == SessionStatus.SUCCEEDED
+    assert reopened.invocation["settings"]["context"] == "First run done"
+
+
+def test_reopen_session_without_backend_session_id_or_goal_skips_adapter(tmp_path: Path) -> None:
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter(result_status="failed", result_summary="Should not run")
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="",
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+
+    reopened = workflow.reopen_session(task_id=task_id, session_id="session-1")
+
+    assert reopened.status == SessionStatus.RUNNING
+    assert reopened.invocation == {}
