@@ -298,9 +298,9 @@ def test_reopen_session_passes_result_summary_as_context(tmp_path: Path) -> None
     assert reopened.invocation["settings"]["context"] == "First run done"
 
 
-def test_reopen_session_without_backend_session_id_or_goal_skips_adapter(tmp_path: Path) -> None:
+def test_reopen_session_without_backend_session_id_or_goal_invokes_adapter(tmp_path: Path) -> None:
     storage, task_id = _setup(tmp_path)
-    stub = StubAdapter(result_status="failed", result_summary="Should not run")
+    stub = StubAdapter(result_status="succeeded", result_summary="Resumed")
     workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
     workflow.start_session(
         session_id="session-1",
@@ -318,8 +318,8 @@ def test_reopen_session_without_backend_session_id_or_goal_skips_adapter(tmp_pat
 
     reopened = workflow.reopen_session(task_id=task_id, session_id="session-1")
 
-    assert reopened.status == SessionStatus.RUNNING
-    assert reopened.invocation == {}
+    assert reopened.status == SessionStatus.SUCCEEDED
+    assert reopened.invocation["settings"]["context"] == "First run done"
 
 
 def test_reopen_session_includes_profile_settings(tmp_path: Path) -> None:

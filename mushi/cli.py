@@ -272,7 +272,7 @@ def session_start(
     ] = None,
     goal: Annotated[
         str | None,
-        typer.Option("--goal", "-g", help="Session goal. If not given, adapter is not invoked."),
+        typer.Option("--goal", "-g", help="Session goal. If not given, adapter opens without a prompt."),
     ] = None,
     no_invoke: Annotated[
         bool,
@@ -334,7 +334,7 @@ def session_resume(
     if prev is None:
         typer.echo(f"Session not found: {session_id}", err=True)
         raise typer.Exit(code=1)
-    if not no_invoke and not _backend_session_id(prev):
+    if not _backend_session_id(prev):
         typer.echo(
             f"Warning: session {session_id} has no backend session ID. "
             "Resume may start a new backend session.",

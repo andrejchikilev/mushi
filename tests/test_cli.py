@@ -174,10 +174,10 @@ def test_cli_session_resume_warns_when_backend_session_id_is_missing(tmp_path) -
     runner = CliRunner()
     runner.invoke(app, ["task", "create", "task-1", "Design storage"], env=env)
     runner.invoke(app, ["profile", "set", "default", "opencode", "--settings", "{}"], env=env)
-    runner.invoke(app, ["session", "start", "task-1", "--session-id", "session-1"], env=env)
+    runner.invoke(app, ["session", "start", "task-1", "--session-id", "session-1", "--no-invoke"], env=env)
     runner.invoke(app, ["session", "finish", "session-1"], env=env)
 
-    resume = runner.invoke(app, ["session", "resume", "session-1"], env=env)
+    resume = runner.invoke(app, ["session", "resume", "session-1", "--no-invoke"], env=env)
 
     assert resume.exit_code == 0
     assert "has no backend session ID" in resume.output

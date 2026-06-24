@@ -91,7 +91,7 @@ class SessionWorkflow:
             )
         )
 
-        if goal and self.get_adapter is not None:
+        if self.get_adapter is not None:
             adapter = self.get_adapter(resolved_profile.backend)
             if adapter is not None:
                 adapter_settings = dict(resolved_profile.settings)
@@ -253,8 +253,6 @@ class SessionWorkflow:
                         has_backend_session_id = True
                 if session.result_summary:
                     adapter_settings["context"] = session.result_summary
-                if not has_backend_session_id and not session.goal:
-                    return session
                 session = self._invoke_adapter(
                     session, adapter, session.goal, session.workspace_path, adapter_settings,
                 )
