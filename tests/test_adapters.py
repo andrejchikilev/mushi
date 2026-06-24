@@ -4,6 +4,7 @@ import pytest
 
 from mushi.adapters.protocol import AdapterResult, BackendCapability
 from mushi.adapters.stub import StubAdapter
+from mushi.adapters._cli_base import _get_timeout
 
 
 def test_stub_adapter_satisfies_protocol() -> None:
@@ -88,3 +89,15 @@ def test_adapter_result_accepts_error_details() -> None:
 
     assert result.status == "failed"
     assert result.error_details == "stack trace"
+
+
+def test_get_timeout_zero_returns_none() -> None:
+    assert _get_timeout({"timeout": 0}) is None
+
+
+def test_get_timeout_absent_returns_none() -> None:
+    assert _get_timeout({}) is None
+
+
+def test_get_timeout_positive_returns_float() -> None:
+    assert _get_timeout({"timeout": 3600}) == 3600.0

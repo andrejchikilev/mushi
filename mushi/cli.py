@@ -175,6 +175,10 @@ def profile_set(
         str | None,
         typer.Option("--model", "-m", help="AI model for the backend."),
     ] = None,
+    timeout: Annotated[
+        float | None,
+        typer.Option("--timeout", "-t", help="Timeout in seconds. 0 or omit = no timeout."),
+    ] = None,
     settings: Annotated[
         str | None,
         typer.Option("--settings", help="JSON object merged with existing settings."),
@@ -189,6 +193,8 @@ def profile_set(
         new_settings = dict(existing.settings)
         if model is not None:
             new_settings["model"] = model
+        if timeout is not None:
+            new_settings["timeout"] = timeout
         if settings is not None:
             new_settings.update(_parse_settings(settings))
     except RecordNotFoundError:
@@ -198,6 +204,8 @@ def profile_set(
         new_settings = {}
         if model is not None:
             new_settings["model"] = model
+        if timeout is not None:
+            new_settings["timeout"] = timeout
         if settings is not None:
             new_settings.update(_parse_settings(settings))
 
@@ -220,6 +228,20 @@ def profile_list(ctx: typer.Context) -> None:
     """List profiles."""
     for profile in ProfileWorkflow(_storage(ctx)).list_profiles():
         typer.echo(f"{profile.name}\t{profile.backend}")
+
+
+@profile_app.command("migrate-timeout")
+def profile_migrate_timeout(ctx: typer.Context) -> None:
+    """Add default timeout (0 = no timeout) to all profiles without one."""
+    storage = _storage(ctx)
+    updated = 0
+    for profile in storage.list_profiles():
+        if "timeout" not in profile.settings:
+            settings = dict(profile.settings)
+            settings["timeout"] = 0
+            storage.save_profile(profile.model_copy(update={"settings": settings}))
+            updated += 1
+    typer.echo(f"Updated {updated} profile(s) with default timeout.")
 
 
 @profile_app.command("remove")

@@ -320,3 +320,36 @@ def test_reopen_session_without_backend_session_id_or_goal_skips_adapter(tmp_pat
 
     assert reopened.status == SessionStatus.RUNNING
     assert reopened.invocation == {}
+
+
+def test_reopen_session_includes_profile_settings(tmp_path: Path) -> None:
+    """reopen_session loads profile settings (e.g. timeout, model) into adapter_settings."""
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+    # Add timeout to the stored profile
+    storage.save_profile(
+        ProfileWorkflow(storage).show_profile("default").model_copy(
+            update={"settings": {"model": "test", "timeout": 7200}}
+        )
+    )
+
+    reopened = workflow.reopen_session(task_id=task_id, session_id="session-1")
+
+    assert reopened.status == SessionStatus.SUCCEEDED
+    assert reopened.invocation["settings"]["timeout"] == 7200
+    assert reopened.invocation["settings"]["model"] == "test"
+    assert reopened.invocation["settings"]["context"] == "First run done"

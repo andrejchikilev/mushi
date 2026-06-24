@@ -48,12 +48,13 @@ class CliAdapterBase:
             self._version = self._detect_version()
 
         args = self._build_invoke_args(goal, settings)
+        timeout = _get_timeout(settings)
 
         if self._interactive:
-            return self._invoke_interactive(args, workspace_path)
+            return self._invoke_interactive(args, workspace_path, timeout)
 
         try:
-            proc = self._run_cli(args, cwd=workspace_path)
+            proc = self._run_cli(args, cwd=workspace_path, timeout=timeout)
         except FileNotFoundError:
             return AdapterResult(
                 status="failed",
@@ -61,9 +62,10 @@ class CliAdapterBase:
                 error_details="binary not found",
             )
         except subprocess.TimeoutExpired:
+            timeout_str = f" (after {timeout}s)" if timeout else ""
             return AdapterResult(
                 status="failed",
-                result_summary=f"{self.binary_name} timed out",
+                result_summary=f"{self.binary_name} timed out{timeout_str}",
                 error_details="timeout",
             )
         except OSError as exc:
@@ -91,12 +93,13 @@ class CliAdapterBase:
         self,
         args: list[str],
         workspace_path: str,
+        timeout: float | None,
     ) -> AdapterResult:
         try:
             proc = subprocess.run(
                 [self.binary_name, *args],
                 cwd=workspace_path,
-                timeout=3600,
+                timeout=timeout,
             )
         except FileNotFoundError:
             return AdapterResult(
@@ -105,9 +108,10 @@ class CliAdapterBase:
                 error_details="binary not found",
             )
         except subprocess.TimeoutExpired:
+            timeout_str = f" (after {timeout}s)" if timeout else ""
             return AdapterResult(
                 status="failed",
-                result_summary=f"{self.binary_name} timed out (after 3600s)",
+                result_summary=f"{self.binary_name} timed out{timeout_str}",
                 error_details="timeout",
             )
         except OSError as exc:
@@ -141,6 +145,7 @@ class CliAdapterBase:
         *,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [self.binary_name, *args],
@@ -148,7 +153,7 @@ class CliAdapterBase:
             text=True,
             cwd=cwd,
             env=env,
-            timeout=3600,
+            timeout=timeout,
         )
 
     def _build_version_args(self) -> list[str]:
@@ -181,3 +186,10 @@ def _status_from_returncode(returncode: int) -> str:
     if returncode == 0:
         return "succeeded"
     return "failed"
+
+
+def _get_timeout(settings: dict[str, Any]) -> float | None:
+    raw = settings.get("timeout", 0)
+    if raw is None or raw == 0:
+        return None
+    return float(raw)

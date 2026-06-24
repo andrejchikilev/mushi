@@ -327,7 +327,61 @@ def test_cli_profile_update_model_without_backend(tmp_path) -> None:
     assert data["backend"] == "opencode"
 
 
-def test_cli_session_list_and_show(tmp_path) -> None:
+def test_cli_profile_set_with_timeout(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["profile", "set", "default", "opencode", "--timeout", "7200"],
+        env=env,
+    )
+    assert result.exit_code == 0
+
+    show = runner.invoke(app, ["profile", "show", "default"], env=env)
+    assert show.exit_code == 0
+    data = json.loads(show.output)
+    assert data["settings"]["timeout"] == 7200
+
+
+def test_cli_profile_update_timeout_without_backend(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    runner.invoke(
+        app,
+        ["profile", "set", "default", "opencode", "--timeout", "3600"],
+        env=env,
+    )
+    result = runner.invoke(
+        app,
+        ["profile", "set", "default", "--timeout", "0"],
+        env=env,
+    )
+    assert result.exit_code == 0
+
+    show = runner.invoke(app, ["profile", "show", "default"], env=env)
+    assert show.exit_code == 0
+    data = json.loads(show.output)
+    assert data["settings"]["timeout"] == 0
+
+
+def test_cli_profile_migrate_timeout(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+
+    runner.invoke(app, ["profile", "set", "dev", "opencode", "--settings", "{}"], env=env)
+    runner.invoke(app, ["profile", "set", "prod", "cursor", "--settings", '{"model":"gpt4"}'], env=env)
+
+    result = runner.invoke(app, ["profile", "migrate-timeout"], env=env)
+    assert result.exit_code == 0
+    assert "Updated 2 profile(s) with default timeout" in result.output
+
+    show_dev = runner.invoke(app, ["profile", "show", "dev"], env=env)
+    assert json.loads(show_dev.output)["settings"]["timeout"] == 0
+
+    show_prod = runner.invoke(app, ["profile", "show", "prod"], env=env)
+    assert json.loads(show_prod.output)["settings"]["timeout"] == 0
     env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
     runner = CliRunner()
 

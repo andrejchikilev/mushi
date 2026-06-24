@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from mushi.core.errors import InvalidWorkflowStateError, RecordConflictError, WorkflowError
 from mushi.core.profiles import ProfileWorkflow
 from mushi.core.schemas import EventKind, HistoryEvent, SessionRecord, SessionStatus, utc_now
+from mushi.storage.errors import RecordNotFoundError
 from mushi.storage.filesystem import FilesystemStorage
 
 if TYPE_CHECKING:
@@ -234,6 +235,11 @@ class SessionWorkflow:
             adapter = self.get_adapter(session.backend)
             if adapter is not None:
                 adapter_settings: dict[str, Any] = {}
+                try:
+                    profile = self.profiles.resolve_profile(session.profile)
+                    adapter_settings.update(dict(profile.settings))
+                except RecordNotFoundError:
+                    pass
                 has_backend_session_id = False
                 if session.backend == "opencode":
                     sid = session.invocation.get("opencode_session_id")
