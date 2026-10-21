@@ -234,3 +234,85 @@ os.kill(os.getpid(), signal.SIGINT)
 
     assert result.status == "cancelled"
     assert result.invocation["returncode"] < 0
+
+
+@pytest.fixture
+def shim_rows_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Shim whose every non-version invocation creates a unique session row."""
+    import uuid
+
+    db_path = tmp_path / "opencode.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE session ("
+        "  id TEXT, directory TEXT, title TEXT, time_created REAL, time_updated REAL"
+        ")"
+    )
+    conn.commit()
+    conn.close()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    shim = tmp_path / "opencode"
+    shim.write_text(
+        "\n".join([
+            "#!/usr/bin/env python3",
+            "import sqlite3, sys, time, uuid",
+            'if sys.argv[1] == "--version":',
+            '    print("opencode 2.0.0")',
+            "    sys.exit(0)",
+            'if sys.argv[1:3] == ["db", "path"]:',
+            "    print(%r)" % str(db_path),
+            "    sys.exit(0)",
+            'prompt = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--prompt" else ""',
+            "sid = str(uuid.uuid4())",
+            "now = time.time()",
+            "conn = sqlite3.connect(%r)" % str(db_path),
+            'conn.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?)",',
+            '             (sid, __import__("os").getcwd(), "Session: " + prompt, now, now))',
+            "conn.commit()",
+            "conn.close()",
+            "sys.exit(0)",
+        ]),
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+    return ws
+
+
+def test_opencode_invoke_attributes_new_session_to_own_run(shim_rows_db: Path) -> None:
+    result = OpenCodeAdapter().invoke(goal="ship it", workspace_path=str(shim_rows_db), settings={})
+
+    assert result.invocation["opencode_session_id"]
+    assert result.invocation["opencode_session_title"] == "Session: ship it"
+
+
+def test_opencode_invoke_resume_keeps_existing_session_id(shim_rows_db: Path) -> None:
+    result = OpenCodeAdapter().invoke(
+        goal="continue",
+        workspace_path=str(shim_rows_db),
+        settings={"opencode_session_id": "ses_known"},
+    )
+
+    assert result.invocation["args"] == ["--session", "ses_known"]
+    assert result.invocation["opencode_session_id"] == "ses_known"
+
+
+def test_opencode_concurrent_agents_attribute_own_sessions(shim_rows_db: Path) -> None:
+    import threading
+
+    results = {}
+
+    def run(goal: str) -> None:
+        results[goal] = OpenCodeAdapter().invoke(goal=goal, workspace_path=str(shim_rows_db), settings={})
+
+    t1 = threading.Thread(target=lambda: run("goal-alpha"))
+    t2 = threading.Thread(target=lambda: run("goal-beta"))
+    t1.start(); t2.start(); t1.join(); t2.join()
+
+    assert results["goal-alpha"].invocation["opencode_session_title"] == "Session: goal-alpha"
+    assert results["goal-beta"].invocation["opencode_session_title"] == "Session: goal-beta"
+    assert (
+        results["goal-alpha"].invocation["opencode_session_id"]
+        != results["goal-beta"].invocation["opencode_session_id"]
+    )

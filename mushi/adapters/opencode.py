@@ -2,11 +2,54 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
-from mushi.adapters._cli_base import CliAdapterBase, with_context
-from mushi.adapters._opencode_db import detect_new_sessions, get_max_created_at, get_opencode_db_path
+from mushi.adapters._attribution import Candidate
+from mushi.adapters._cli_base import CliAdapterBase, invoke_with_attribution, with_context
+from mushi.adapters._opencode_db import (
+    get_opencode_db_path,
+    list_workspace_sessions,
+)
 from mushi.adapters.protocol import AdapterResult, BackendAdapter, BackendCapability
+
+
+def _attribution_hooks(db_path: Path | None, workspace_path: str) -> "_OpenCodeHooks":
+    return _OpenCodeHooks(db_path, workspace_path)
+
+
+class _OpenCodeHooks:
+    """Spawn-window attribution over the shared OpenCode session table."""
+
+    resume_keys = ("opencode_session_id", "opencode_session_title")
+
+    def __init__(self, db_path: Path | None, workspace_path: str) -> None:
+        self.db_path = db_path
+        self.workspace_path = workspace_path
+
+    def supports_attribution(self) -> bool:
+        return self.db_path is not None
+
+    def snapshot_ids(self) -> set[str]:
+        return self._ids()
+
+    def candidates(self) -> list[Candidate]:
+        if self.db_path is None:
+            return []
+        return [
+            Candidate(
+                key=row["id"],
+                created=row["time_created"],
+                invocation_fields={
+                    "opencode_session_id": row["id"],
+                    "opencode_session_title": row["title"],
+                },
+            )
+            for row in list_workspace_sessions(self.db_path, self.workspace_path)
+        ]
+
+    def _ids(self) -> set[str]:
+        return {c.key for c in self.candidates()}
 
 
 class OpenCodeAdapter(CliAdapterBase, BackendAdapter):
@@ -45,25 +88,16 @@ class OpenCodeAdapter(CliAdapterBase, BackendAdapter):
         settings: dict[str, Any],
     ) -> AdapterResult:
         db_path = get_opencode_db_path()
-        before = get_max_created_at(db_path, workspace_path) if db_path else None
+        hooks = _attribution_hooks(db_path, workspace_path)
+        return invoke_with_attribution(
+            CliAdapterBase.invoke,
+            self,
+            goal=goal,
+            workspace_path=workspace_path,
+            settings=settings,
+            hooks=hooks,
+        )
 
-        result = super().invoke(goal=goal, workspace_path=workspace_path, settings=settings)
-
-        if db_path is not None:
-            sessions = detect_new_sessions(db_path, workspace_path, before)
-            if sessions:
-                latest = sessions[0]
-                result = AdapterResult(
-                    status=result.status,
-                    backend_version=result.backend_version,
-                    transcript_refs=list(result.transcript_refs),
-                    invocation={
-                        **result.invocation,
-                        "opencode_session_id": latest["id"],
-                        "opencode_session_title": latest["title"],
-                    },
-                    result_summary=result.result_summary,
-                    error_details=result.error_details,
-                )
-
-        return result
+    def persistent_store_path(self) -> str | None:
+        db_path = get_opencode_db_path()
+        return str(db_path) if db_path else None

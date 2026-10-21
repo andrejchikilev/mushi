@@ -6,7 +6,11 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
-from mushi.adapters._opencode_db import detect_new_sessions, get_max_created_at
+from mushi.adapters._opencode_db import (
+    detect_new_sessions,
+    get_max_created_at,
+    list_workspace_sessions,
+)
 
 
 def _seed_db(
@@ -149,3 +153,29 @@ class TestDetectNewSessions:
         assert entry["title"] == "My Session"
         assert entry["time_created"] == 1234.0
         assert entry["time_updated"] == 1234.0
+
+
+class TestListWorkspaceSessions:
+    def test_returns_all_rows_for_workspace(self, tmp_path: Path) -> None:
+        db = tmp_path / "opencode.db"
+        _seed_db(
+            db,
+            sessions=[
+                ("s1", "Old", 1000.0),
+                ("s2", "New", 2000.0),
+            ],
+        )
+        result = list_workspace_sessions(db, "/workspace")
+        assert [row["id"] for row in result] == ["s2", "s1"]
+        assert result[0]["title"] == "New"
+        assert result[0]["time_created"] == 2000.0
+
+    def test_excludes_other_workspaces(self, tmp_path: Path) -> None:
+        db = tmp_path / "opencode.db"
+        _seed_db(db, workspace="/other", sessions=[("s1", "Other", 1000.0)])
+        assert list_workspace_sessions(db, "/workspace") == []
+
+    def test_returns_empty_for_broken_db(self, tmp_path: Path) -> None:
+        db = tmp_path / "opencode.db"
+        db.write_text("not a database")
+        assert list_workspace_sessions(db, "/workspace") == []

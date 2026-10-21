@@ -1,7 +1,9 @@
 """Tests for Cursor CLI adapter using a shim binary."""
 
 import os
+import threading
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -150,3 +152,86 @@ os.kill(os.getpid(), signal.SIGINT)
 
     assert result.status == "cancelled"
     assert result.invocation["returncode"] < 0
+
+
+@pytest.fixture
+def chats_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Fake cursor chats/projects dirs and a shim that opens a new agent each run."""
+    import json
+
+    chats = tmp_path / "chats"
+    chats.mkdir()
+    (tmp_path / "projects").mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    shim = tmp_path / "cursor"
+    shim.write_text(
+        "\n".join([
+            "#!/usr/bin/env python3",
+            "import json, sqlite3, sys, time, uuid, pathlib",
+            'if sys.argv[1] == "--version":',
+            '    print("cursor 1.2.3")',
+            "    sys.exit(0)",
+            'prompt = sys.argv[2] if len(sys.argv) > 2 else ""',
+            "agent_id = str(uuid.uuid4())",
+            'agent_dir = pathlib.Path(%r) / "unknown-hash" / agent_id' % str(chats),
+            "agent_dir.mkdir(parents=True)",
+            'conn = sqlite3.connect(str(agent_dir / "store.db"))',
+            'conn.execute("CREATE TABLE meta (key TEXT, value TEXT)")',
+            'meta = json.dumps({"agentId": agent_id, "name": "Session: " + prompt,',
+            '                  "createdAt": int(time.time() * 1000)})',
+            'conn.execute("INSERT INTO meta VALUES (\'0\', ?)", (meta.encode("utf-8").hex(),))',
+            "conn.commit()",
+            "conn.close()",
+            "sys.exit(0)",
+        ]),
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+    monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", chats)
+    monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", tmp_path / "projects")
+    return ws
+
+
+def test_cursor_invoke_attributes_new_agent_to_own_run(chats_env: Path) -> None:
+    adapter = CursorCliAdapter()
+    result = adapter.invoke(goal="fix the bug", workspace_path=str(chats_env), settings={})
+
+    assert result.invocation["cursor_agent_id"]
+    assert result.invocation["cursor_agent_name"] == "Session: fix the bug"
+
+
+def test_cursor_invoke_resume_keeps_existing_agent_id(chats_env: Path) -> None:
+    adapter = CursorCliAdapter()
+    before = adapter.invoke(goal="first", workspace_path=str(chats_env), settings={})
+    agent_id = before.invocation["cursor_agent_id"]
+
+    resumed = adapter.invoke(
+        goal="continue", workspace_path=str(chats_env),
+        settings={"cursor_agent_id": agent_id, "cursor_agent_name": before.invocation["cursor_agent_name"]},
+    )
+
+    assert resumed.invocation["cursor_agent_id"] == agent_id
+    assert resumed.invocation["args"] == ["agent", "--resume", agent_id]
+
+
+def test_cursor_concurrent_agents_attribute_own_ids(chats_env: Path) -> None:
+    """Two concurrent agents in the same workspace each record their own agent id."""
+    results: dict[str, Any] = {}
+
+    def run(goal: str) -> None:
+        results[goal] = CursorCliAdapter().invoke(goal=goal, workspace_path=str(chats_env), settings={})
+
+    t1 = threading.Thread(target=lambda: run("goal-one"))
+    t2 = threading.Thread(target=lambda: run("goal-two"))
+    t1.start(); t2.start(); t1.join(); t2.join()
+
+    ids = {
+        goal: results[goal].invocation.get("cursor_agent_id")
+        for goal in ("goal-one", "goal-two")
+    }
+    assert ids["goal-one"], ids["goal-two"]
+    assert ids["goal-one"] != ids["goal-two"]
+    assert results["goal-one"].invocation["cursor_agent_name"] == "Session: goal-one"
+    assert results["goal-two"].invocation["cursor_agent_name"] == "Session: goal-two"

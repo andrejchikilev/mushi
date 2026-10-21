@@ -142,7 +142,9 @@ class SessionWorkflow:
             update={
                 "status": new_status,
                 "backend_version": result.backend_version,
-                "invocation": result.invocation,
+                # Merge, never replace: persisted backend session ids (resume)
+                # must survive adapter results that carry no invocation keys.
+                "invocation": {**(session.invocation or {}), **(result.invocation or {})},
                 "transcript_refs": result.transcript_refs,
                 "result_summary": result_summary,
             }
@@ -187,10 +189,15 @@ class SessionWorkflow:
         return updated
 
     def remove_session(self, *, task_id: str, session_id: str) -> None:
-        self.storage.load_session(task_id, session_id)
+        session = self.storage.load_session(task_id, session_id)
         task = self.storage.load_task(task_id)
         if session_id not in task.session_ids:
             raise WorkflowError(f"Session {session_id} is not linked to task {task_id}")
+
+        if self.get_adapter is not None:
+            adapter = self.get_adapter(session.backend)
+            if adapter is not None:
+                adapter.purge_session(session)
 
         updated = task.model_copy(
             update={

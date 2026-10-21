@@ -48,6 +48,39 @@ def get_max_created_at(db_path: Path, workspace_path: str) -> datetime | None:
         return None
 
 
+def list_workspace_sessions(
+    db_path: Path,
+    workspace_path: str,
+) -> list[dict[str, Any]]:
+    """Return every session row for *workspace_path*, newest first.
+
+    Unlike :func:`get_max_created_at`/``detect_new_sessions`` this returns
+    the full row set regardless of creation time, so callers can snapshot
+    the exact set of existing session ids before spawning a backend.
+    """
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            rows = conn.execute(
+                """SELECT id, directory, title, time_created, time_updated
+                   FROM session
+                   WHERE directory = ?
+                   ORDER BY time_created DESC""",
+                (workspace_path,),
+            ).fetchall()
+        return [
+            {
+                "id": r[0],
+                "directory": r[1],
+                "title": r[2],
+                "time_created": r[3],
+                "time_updated": r[4],
+            }
+            for r in rows
+        ]
+    except (sqlite3.Error, OSError):
+        return []
+
+
 def detect_new_sessions(
     db_path: Path,
     workspace_path: str,

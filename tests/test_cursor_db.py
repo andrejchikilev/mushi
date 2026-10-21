@@ -9,6 +9,9 @@ from pathlib import Path
 
 from mushi.adapters._cursor_db import (
     detect_new_agents,
+    list_agent_ids,
+    list_agent_rows,
+    workspace_slug_for_path,
     list_all_agent_store_paths,
     list_all_agent_store_paths_with_mtime,
     read_agent_meta,
@@ -145,3 +148,106 @@ def _make_store_db(db_path: Path, agent_id: str, name: str) -> None:
     conn.execute("INSERT OR REPLACE INTO meta VALUES ('0', ?)", (meta.encode("utf-8").hex(),))
     conn.commit()
     conn.close()
+
+
+def _make_transcript(projects: Path, slug: str, agent_id: str) -> None:
+    d = projects / slug / "agent-transcripts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / agent_id).write_text("")
+
+
+class TestListAgentIds:
+    def test_returns_all_agent_ids(self, tmp_path: Path, monkeypatch) -> None:
+        chats = tmp_path / "chats"
+        db1 = chats / "hash1" / "agent1" / "store.db"
+        db2 = chats / "hash1" / "agent2" / "store.db"
+        _make_store_db(db1, "agent-1", "One")
+        _make_store_db(db2, "agent-2", "Two")
+        monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", chats)
+
+        assert list_agent_ids() == {"agent-1", "agent-2"}
+
+    def test_empty_when_chats_dir_missing(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", tmp_path / "nonexistent")
+        assert list_agent_ids() == set()
+
+
+class TestListAgentRows:
+    def test_lists_top_level_agents_newest_first(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        chats = tmp_path / "chats"
+        projects = tmp_path / "projects"
+        db1 = chats / "hash1" / "aaa" / "store.db"
+        db2 = chats / "hash1" / "bbb" / "store.db"
+        _make_store_db(db1, "agent-1", "One")  # createdAt = now
+        time.sleep(0.01)
+        _make_store_db(db2, "agent-2", "Two")
+        monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", chats)
+        monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", projects)
+
+        result = list_agent_rows()
+        assert [row["agentId"] for row in result] == ["agent-2", "agent-1"]
+        assert result[0]["name"] == "Two"
+        assert isinstance(result[0]["createdAt"], float)
+
+    def test_skips_subagents(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        chats = tmp_path / "chats"
+        db_sub = chats / "hash1" / "sub" / "store.db"
+        import json
+        import sqlite3 as sq
+        db_sub.parent.mkdir(parents=True)
+        conn = sq.connect(str(db_sub))
+        meta = json.dumps({
+            "agentId": "agent-sub",
+            "name": "Sub",
+            "createdAt": time.time() * 1000,
+            "subagentInfo": {"parentAgentId": "agent-1"},
+        })
+        conn.execute("CREATE TABLE meta (key TEXT, value TEXT)")
+        conn.execute("INSERT INTO meta VALUES ('0', ?)", (meta.encode("utf-8").hex(),))
+        conn.commit()
+        conn.close()
+        monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", chats)
+        monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", tmp_path / "projects")
+
+        assert list_agent_rows() == []
+
+    def test_workspace_slug_filters_known_other_workspace(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        chats = tmp_path / "chats"
+        projects = tmp_path / "projects"
+        db1 = chats / "hashA" / "agent-a" / "store.db"
+        db2 = chats / "hashB" / "agent-b" / "store.db"
+        db3 = chats / "hashC" / "agent-c" / "store.db"
+        _make_store_db(db1, "agent-a", "A")
+        _make_store_db(db2, "agent-b", "B")
+        _make_store_db(db3, "agent-c", "C")
+        # agent-a belongs to workspace proj-a; agent-b to proj-b; agent-c unmappable.
+        _make_transcript(projects, "proj-a", "agent-a")
+        _make_transcript(projects, "proj-b", "agent-b")
+        monkeypatch.setattr("mushi.adapters._cursor_db.CHATS_DIR", chats)
+        monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", projects)
+
+        rows = {row["agentId"] for row in list_agent_rows(workspace_slug="proj-a")}
+        assert rows == {"agent-a", "agent-c"}
+
+
+class TestWorkspaceSlugForPath:
+    def test_returns_slug_when_project_dir_exists(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", tmp_path / "projects")
+        import os
+        slug = os.path.abspath(str(tmp_path / "ws")).replace(os.sep, "-").lstrip("-")
+        (tmp_path / "projects" / slug).mkdir(parents=True)
+        assert workspace_slug_for_path(str(tmp_path / "ws")) == slug
+
+    def test_returns_none_when_project_dir_missing(
+        self, tmp_path: Path, monkeypatch,
+    ) -> None:
+        monkeypatch.setattr("mushi.adapters._cursor_db.PROJECTS_DIR", tmp_path / "projects")
+        assert workspace_slug_for_path(str(tmp_path / "nowhere")) is None

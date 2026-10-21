@@ -128,7 +128,7 @@ def task_remove(
     task_id: Annotated[str, typer.Argument(help="Task id.")],
 ) -> None:
     """Remove a task and its sessions, events, and handoffs."""
-    _run(lambda: TaskWorkflow(_storage(ctx)).remove_task(task_id))
+    _run(lambda: TaskWorkflow(_storage(ctx), get_adapter=adapter_registry.get).remove_task(task_id))
     typer.echo(f"removed task {task_id}")
 
 
@@ -296,6 +296,12 @@ def session_start(
         goal=goal or "",
     )
     typer.echo(f"session {session.id} status {session.status.value}")
+    if get_adapter is not None and not _backend_session_id(session):
+        typer.echo(
+            f"Warning: session {session.id} has no recorded backend session ID; "
+            "resume may start a new backend session.",
+            err=True,
+        )
 
 
 @session_app.command("finish")
@@ -363,7 +369,9 @@ def session_remove(
     if session is None:
         typer.echo(f"Session not found: {session_id}", err=True)
         raise typer.Exit(code=1)
-    _run(lambda: SessionWorkflow(storage).remove_session(task_id=session.task_id, session_id=session_id))
+    _run(lambda: SessionWorkflow(storage, get_adapter=adapter_registry.get).remove_session(
+        task_id=session.task_id, session_id=session_id,
+    ))
     typer.echo(f"removed session {session_id}")
 
 
@@ -381,7 +389,19 @@ def session_list(
         for task in storage.list_tasks():
             sessions.extend(storage.list_sessions(task.id))
     for session in sessions:
-        typer.echo(f"{session.id}\t{session.status.value}\t{session.task_id}\t{session.goal}")
+        size = _session_size(storage, session)
+        typer.echo(f"{session.id}\t{session.status.value}\t{session.task_id}\t{size}\t{session.goal}")
+    seen_backends = {s.backend for s in sessions}
+    for backend_name in sorted(seen_backends):
+        adapter = adapter_registry.get(backend_name)
+        if adapter is not None:
+            store_path = adapter.persistent_store_path()
+            if store_path is not None:
+                try:
+                    size = _format_size(Path(store_path).stat().st_size)
+                    typer.echo(f"*\t{backend_name} DB: {size}")
+                except OSError:
+                    pass
 
 
 @session_app.command("show")
@@ -505,6 +525,30 @@ def _backend_session_id(session: SessionRecord) -> str | None:
         value = session.invocation.get("cursor_agent_id")
         return value if isinstance(value, str) else None
     return None
+
+
+def _session_size(storage: FilesystemStorage, session: SessionRecord) -> str:
+    adapter = adapter_registry.get(session.backend)
+    if adapter is not None and session.invocation:
+        backend_size = adapter.session_disk_usage(session)
+        if backend_size is not None:
+            return _format_size(backend_size)
+    path = storage.layout.session_path(session.task_id, session.id)
+    try:
+        return _format_size(path.stat().st_size)
+    except OSError:
+        return "?"
+
+
+def _format_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024:
+            if unit == "B":
+                return f"{value:.0f} {unit}"
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
 
 
 def _run(wf_callable: Any) -> Any:

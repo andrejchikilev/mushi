@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from mushi.adapters.protocol import AdapterResult, BackendAdapter, BackendCapability
+from mushi.core.schemas import SessionRecord
 
 
 class StubAdapter(BackendAdapter):
@@ -54,3 +55,12 @@ class StubAdapter(BackendAdapter):
             result_summary=self._result_summary,
             error_details=self._error_details,
         )
+
+    def session_disk_usage(self, session: SessionRecord) -> int | None:
+        return None
+
+    def purge_session(self, session: SessionRecord) -> None:
+        return None
+
+    def persistent_store_path(self) -> str | None:
+        return None

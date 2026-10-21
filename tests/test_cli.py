@@ -1,10 +1,12 @@
 import json
+from unittest.mock import patch
 
 from typer.testing import CliRunner
 
 from mushi.adapters import registry as adapter_registry
 from mushi.adapters.stub import StubAdapter
-from mushi.cli import app
+from mushi.cli import _format_size, app
+from mushi.storage.filesystem import FilesystemStorage
 
 
 def test_cli_shows_help_without_args() -> None:
@@ -26,6 +28,16 @@ def test_cli_shows_schema_version() -> None:
 
     assert result.exit_code == 0
     assert "schema version 1" in result.output
+
+
+def test_format_size_uses_bytes_without_decimals() -> None:
+    assert _format_size(512) == "512 B"
+
+
+def test_format_size_uses_scaled_units_with_one_decimal() -> None:
+    assert _format_size(1536) == "1.5 KB"
+    assert _format_size(1024 * 1024) == "1.0 MB"
+    assert _format_size(1024 * 1024 * 1024) == "1.0 GB"
 
 
 def test_cli_task_profile_session_workflow(tmp_path) -> None:
@@ -401,8 +413,13 @@ def test_cli_profile_migrate_timeout(tmp_path) -> None:
 
     list_result = runner.invoke(app, ["session", "list", "task-1"], env=env)
     assert list_result.exit_code == 0
-    assert "session-1\tsucceeded\ttask-1\t" in list_result.output
-    assert "session-2\trunning\ttask-1\t" in list_result.output
+    rows = [line.split("\t") for line in list_result.output.splitlines()]
+    assert rows[0][:3] == ["session-1", "succeeded", "task-1"]
+    assert rows[0][3].endswith(" B")
+    assert rows[0][4] == "First"
+    assert rows[1][:3] == ["session-2", "running", "task-1"]
+    assert rows[1][3].endswith(" B")
+    assert rows[1][4] == "Second"
 
     show_result = runner.invoke(app, ["session", "show", "session-1"], env=env)
     assert show_result.exit_code == 0
@@ -457,3 +474,160 @@ def test_cli_task_remove(tmp_path) -> None:
     assert "removed task task-1" in result.output
     show = runner.invoke(app, ["task", "show", "task-1"], env=env)
     assert show.exit_code != 0
+
+
+def test_cli_session_list_shows_cursor_backend_size(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "cursor", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "Test", "--no-invoke"],
+        env=env,
+    )
+
+    storage = FilesystemStorage(tmp_path)
+    session = storage.load_session("task-1", "session-1")
+    session = session.model_copy(update={
+        "invocation": {"cursor_agent_id": "test-agent-789"},
+    })
+    storage.save_session(session)
+
+    chats_dir = tmp_path / ".cursor" / "chats"
+    agent_dir = chats_dir / "somehash" / "test-agent-789"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "data.txt").write_text("x" * 2048)
+
+    with patch("mushi.adapters._cursor_db.CHATS_DIR", chats_dir):
+        result = runner.invoke(app, ["session", "list"], env=env)
+
+    assert result.exit_code == 0
+    rows = [line.split("\t") for line in result.output.splitlines()]
+    assert rows[0][:3] == ["session-1", "running", "task-1"]
+    assert "2.0 KB" in rows[0][3]
+
+
+def test_cli_session_list_shows_opencode_db_summary(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "opencode", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "Test", "--no-invoke"],
+        env=env,
+    )
+
+    db_path = tmp_path / "opencode.db"
+    db_path.write_text("x" * 512)
+
+    with patch("mushi.adapters.opencode.get_opencode_db_path", return_value=db_path):
+        result = runner.invoke(app, ["session", "list"], env=env)
+
+    assert result.exit_code == 0
+    assert "*\topencode DB: 512 B" in result.output
+
+
+def test_cli_session_remove_purges_cursor_backend(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "cursor", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "Test", "--no-invoke"],
+        env=env,
+    )
+
+    storage = FilesystemStorage(tmp_path)
+    session = storage.load_session("task-1", "session-1")
+    session = session.model_copy(update={
+        "invocation": {"cursor_agent_id": "test-agent-101"},
+    })
+    storage.save_session(session)
+
+    chats_dir = tmp_path / ".cursor" / "chats"
+    agent_dir = chats_dir / "somehash" / "test-agent-101"
+    agent_dir.mkdir(parents=True)
+    (agent_dir / "data.txt").write_text("some data")
+    assert agent_dir.exists()
+
+    with patch("mushi.adapters._cursor_db.CHATS_DIR", chats_dir):
+        result = runner.invoke(app, ["session", "remove", "session-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed session session-1" in result.output
+    assert not agent_dir.exists()
+
+
+def test_cli_session_remove_tolerates_missing_cursor_metadata(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "cursor", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "Test", "--no-invoke"],
+        env=env,
+    )
+
+    result = runner.invoke(app, ["session", "remove", "session-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed session session-1" in result.output
+
+
+def test_cli_task_remove_purges_cursor_backend_for_all_sessions(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "cursor", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "First", "--no-invoke"],
+        env=env,
+    )
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-2", "--profile", "default", "--goal", "Second", "--no-invoke"],
+        env=env,
+    )
+
+    storage = FilesystemStorage(tmp_path)
+    for sid, agent_id in [("session-1", "agent-a"), ("session-2", "agent-b")]:
+        session = storage.load_session("task-1", sid)
+        session = session.model_copy(update={"invocation": {"cursor_agent_id": agent_id}})
+        storage.save_session(session)
+
+    chats_dir = tmp_path / ".cursor" / "chats"
+    for agent_id in ("agent-a", "agent-b"):
+        agent_dir = chats_dir / "hash" / agent_id
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "data.txt").write_text("some data")
+        assert agent_dir.exists()
+
+    with patch("mushi.adapters._cursor_db.CHATS_DIR", chats_dir):
+        result = runner.invoke(app, ["task", "remove", "task-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed task task-1" in result.output
+    for agent_id in ("agent-a", "agent-b"):
+        assert not (chats_dir / "hash" / agent_id).exists()
+
+
+def test_cli_task_remove_tolerates_missing_cursor_metadata(tmp_path) -> None:
+    env = {"MUSHI_STORAGE_ROOT": str(tmp_path)}
+    runner = CliRunner()
+    runner.invoke(app, ["task", "create", "task-1", "Test"], env=env)
+    runner.invoke(app, ["profile", "set", "default", "cursor", "--settings", "{}"], env=env)
+    runner.invoke(
+        app, ["session", "start", "task-1", "/repo",
+              "--session-id", "session-1", "--profile", "default", "--goal", "Test", "--no-invoke"],
+        env=env,
+    )
+
+    result = runner.invoke(app, ["task", "remove", "task-1"], env=env)
+
+    assert result.exit_code == 0
+    assert "removed task task-1" in result.output

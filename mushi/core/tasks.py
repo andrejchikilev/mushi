@@ -1,15 +1,25 @@
 """Task workflow operations."""
 
+from typing import TYPE_CHECKING, Callable
+
 from mushi.core.errors import RecordConflictError
 from mushi.core.schemas import EventKind, HistoryEvent, TaskRecord, TaskStatus, utc_now
 from mushi.storage.filesystem import FilesystemStorage
+
+if TYPE_CHECKING:
+    from mushi.adapters.protocol import BackendAdapter
 
 
 class TaskWorkflow:
     """Storage-backed task lifecycle operations."""
 
-    def __init__(self, storage: FilesystemStorage) -> None:
+    def __init__(
+        self,
+        storage: FilesystemStorage,
+        get_adapter: Callable[[str], "BackendAdapter | None"] | None = None,
+    ) -> None:
         self.storage = storage
+        self.get_adapter = get_adapter
 
     def create_task(
         self,
@@ -69,7 +79,14 @@ class TaskWorkflow:
         return self.storage.list_tasks()
 
     def remove_task(self, task_id: str) -> None:
-        self.storage.load_task(task_id)
+        task = self.storage.load_task(task_id)
+
+        if self.get_adapter is not None:
+            for session in self.storage.list_sessions(task_id):
+                adapter = self.get_adapter(session.backend)
+                if adapter is not None:
+                    adapter.purge_session(session)
+
         for handoff in self.storage.find_handoffs_for_task(task_id):
             self.storage.delete_handoff(handoff)
         self.storage.delete_task(task_id)

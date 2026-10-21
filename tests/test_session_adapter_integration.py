@@ -353,3 +353,38 @@ def test_reopen_session_includes_profile_settings(tmp_path: Path) -> None:
     assert reopened.invocation["settings"]["timeout"] == 7200
     assert reopened.invocation["settings"]["model"] == "test"
     assert reopened.invocation["settings"]["context"] == "First run done"
+
+
+def test_reopen_session_preserves_backend_session_id(tmp_path: Path) -> None:
+    """Regression: adapter results without invocation keys must not erase resume ids."""
+    storage, task_id = _setup(tmp_path)
+    stub = StubAdapter()
+    workflow = SessionWorkflow(storage, get_adapter=lambda name: stub if name == "stub" else None)
+    workflow.start_session(
+        session_id="session-1",
+        task_id=task_id,
+        profile_name="default",
+        workspace_path="/repo",
+        goal="First session",
+    )
+    session1 = storage.load_session(task_id, "session-1")
+    # Keep the stub backend so the adapter actually runs on reopen and
+    # returns an invocation that lacks the backend session id key.
+    storage.save_session(
+        session1.model_copy(
+            update={
+                "invocation": {"opencode_session_id": "ses_open123"},
+            }
+        )
+    )
+    workflow.finish_session(
+        task_id=task_id,
+        session_id="session-1",
+        status=SessionStatus.SUCCEEDED,
+        result_summary="First run done",
+    )
+
+    reopened = workflow.reopen_session(task_id=task_id, session_id="session-1")
+
+    assert reopened.invocation["opencode_session_id"] == "ses_open123"
+    assert reopened.invocation["goal"] == "First session"
